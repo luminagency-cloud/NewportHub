@@ -16,9 +16,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "newporthub"
-# Local dev does not need a real id. Before the first remote deploy, run
-# `npx wrangler d1 create newporthub` and paste the id it prints here.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "b315a85f-9541-4051-be32-0cb868daa7af"
 migrations_dir = "drizzle/migrations"
 
 [[r2_buckets]]
