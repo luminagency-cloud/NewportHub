@@ -1,0 +1,36 @@
+---
+// One URL level serves both /[category]/ and /[town]/. DB triggers keep the two slug sets disjoint.
+import Base from '../../layouts/Base.astro';
+import ListingGrid from '../../components/ListingGrid.astro';
+import { allCategories, allTowns, getCategory, getTown, searchListings } from '../../lib/queries';
+import { pageParam } from '../../lib/params';
+
+const slug = Astro.params.slug!;
+const page = pageParam(Astro.url);
+const category = await getCategory(slug);
+const town = category ? undefined : await getTown(slug);
+if (!category && !town) return new Response(null, { status: 404 });
+
+const { rows, total } = await searchListings({ categoryId: category?.id, townId: town?.id, page });
+// Cross-links: a category page links to its towns, a town page links to its categories.
+const related = category ? await allTowns() : await allCategories();
+
+const title = category ? `${category.name} in Newport County, RI` : `Businesses in ${town!.name}, ${town!.state}`;
+const description = category?.description ?? `${total} local listings. ${title}.`;
+---
+<Base title={title} description={description} canonicalPath={`/${slug}/`}>
+  <nav class="mb-2 text-sm text-slate-500"><a href="/" class="hover:underline">Home</a> / {category?.name ?? town!.name}</nav>
+  <h1 class="mb-2 text-2xl font-bold">{title}</h1>
+  {category?.description && <p class="mb-4 text-slate-600">{category.description}</p>}
+  <ul class="mb-6 flex flex-wrap gap-2 text-sm">
+    {related.map((r) => (
+      <li>
+        <a
+          href={category ? `/${slug}/${r.slug}/` : `/${r.slug}/${slug}/`}
+          class="inline-block rounded-full border border-slate-300 bg-white px-3 py-1 hover:border-sky-400"
+        >{r.name}</a>
+      </li>
+    ))}
+  </ul>
+  <ListingGrid rows={rows} total={total} page={page} />
+</Base>

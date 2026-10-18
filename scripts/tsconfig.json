@@ -1,0 +1,5 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "include": ["./**/*", "../src/db/**/*", "../src/lib/slug.ts"],
+  "compilerOptions": { "noUncheckedIndexedAccess": true, "types": ["node"], "noEmit": true }
+}

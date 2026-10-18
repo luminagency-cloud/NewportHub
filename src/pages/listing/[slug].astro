@@ -1,0 +1,83 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getPublishedListing } from '../../lib/queries';
+import { displayHours, toOpeningHoursSpec } from '../../lib/hours';
+
+const row = await getPublishedListing(Astro.params.slug!);
+if (!row) return new Response(null, { status: 404 });
+const { listing: l, category, town } = row;
+
+const url = new URL(`/listing/${l.slug}`, Astro.site).href;
+const logo = l.logoR2Key ? new URL(`/media/${l.logoR2Key}`, Astro.site).href : undefined;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'LocalBusiness',
+  '@id': url,
+  name: l.name,
+  url: l.website ?? url,
+  telephone: l.phone ?? undefined,
+  email: l.email ?? undefined,
+  description: l.description ?? undefined,
+  logo,
+  image: logo,
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: l.address ?? undefined,
+    addressLocality: town.name,
+    addressRegion: town.state,
+    addressCountry: 'US',
+  },
+  geo: l.lat != null && l.lng != null ? { '@type': 'GeoCoordinates', latitude: l.lat, longitude: l.lng } : undefined,
+  openingHoursSpecification: toOpeningHoursSpec(l.hours),
+};
+// Escape "<" so listing text can never close the script tag.
+const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+const hours = displayHours(l.hours);
+const mapUrl = l.lat != null && l.lng != null
+  ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`
+  : l.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.address)}` : undefined;
+const paid = l.tier !== 'free';
+---
+<Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={l.description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`}>
+  <script slot="head" type="application/ld+json" set:html={jsonLdText} />
+  <nav class="mb-4 text-sm text-slate-500">
+    <a href="/" class="hover:underline">Home</a>{' / '}
+    <a href={`/${category.slug}/`} class="hover:underline">{category.name}</a>{' / '}
+    <a href={`/${category.slug}/${town.slug}/`} class="hover:underline">{town.name}</a>
+  </nav>
+
+  <article class={`rounded-xl border p-6 ${l.tier === 'premium' ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300' : l.tier === 'featured' ? 'border-sky-300 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white'}`}>
+    <header class="mb-6 flex items-start gap-4">
+      {l.logoR2Key && <img src={`/media/${l.logoR2Key}`} alt={`${l.name} logo`} width="96" height="96" class="h-24 w-24 rounded object-contain" />}
+      <div>
+        {paid && <span class={`mb-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase ${l.tier === 'premium' ? 'bg-amber-400 text-amber-950' : 'bg-sky-100 text-sky-800'}`}>{l.tier}</span>}
+        <h1 class="text-3xl font-bold">{l.name}</h1>
+        <p class="text-slate-600">{category.name} · {town.name}, {town.state}</p>
+      </div>
+    </header>
+
+    <div class="grid gap-8 md:grid-cols-3">
+      <div class="md:col-span-2">
+        {l.description && <p class="mb-6 whitespace-pre-line text-slate-700">{l.description}</p>}
+        {hours.length > 0 && (
+          <section>
+            <h2 class="mb-2 font-semibold">Hours</h2>
+            <table class="text-sm">
+              <tbody>
+                {hours.map((h) => (
+                  <tr><th scope="row" class="py-0.5 pr-6 text-left font-normal text-slate-500">{h.day}</th><td>{h.text}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
+      <aside class="space-y-3 text-sm">
+        {l.address && <p><span class="block text-slate-500">Address</span>{mapUrl ? <a href={mapUrl} rel="nofollow noopener" target="_blank" class="text-sky-700 hover:underline">{l.address}</a> : l.address}</p>}
+        {l.phone && <p><span class="block text-slate-500">Phone</span><a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} class="text-sky-700 hover:underline">{l.phone}</a></p>}
+        {l.website && <p><span class="block text-slate-500">Website</span><a href={l.website} rel={paid ? 'noopener' : 'nofollow noopener'} target="_blank" class="break-all text-sky-700 hover:underline">{l.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>}
+        {l.email && <p><span class="block text-slate-500">Email</span><a href={`mailto:${l.email}`} class="break-all text-sky-700 hover:underline">{l.email}</a></p>}
+      </aside>
+    </div>
+  </article>
+</Base>

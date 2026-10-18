@@ -1,0 +1,48 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Path for <link rel="canonical">. Defaults to the current path. */
+  canonicalPath?: string;
+  noindex?: boolean;
+}
+const { title, description, canonicalPath, noindex = false } = Astro.props;
+const canonical = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
+const fullTitle = title === 'NewportHub' ? title : `${title} | NewportHub`;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <slot name="head" />
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+    <header class="border-b border-slate-200 bg-white">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
+        <a href="/" class="text-xl font-bold tracking-tight text-sky-800">NewportHub</a>
+        <form action="/search" method="get" class="hidden flex-1 justify-end sm:flex">
+          <input
+            name="q"
+            type="search"
+            placeholder="Search businesses"
+            aria-label="Search businesses"
+            class="w-full max-w-xs rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+          />
+        </form>
+      </div>
+    </header>
+    <main class="mx-auto max-w-6xl px-4 py-8">
+      <slot />
+    </main>
+    <footer class="border-t border-slate-200 py-8 text-center text-sm text-slate-500">
+      © {new Date().getFullYear()} NewportHub · Newport County, Rhode Island
+    </footer>
+  </body>
+</html>

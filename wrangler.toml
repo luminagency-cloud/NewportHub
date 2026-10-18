@@ -1,0 +1,22 @@
+# Cloudflare Worker config for NewportHub.
+# `astro build` reads this file and writes the deployable config to dist/server/wrangler.json.
+name = "newporthub"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+main = "@astrojs/cloudflare/entrypoints/server"
+
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "newporthub"
+# Local dev does not need a real id. Before the first remote deploy, run
+# `npx wrangler d1 create newporthub` and paste the id it prints here.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "drizzle/migrations"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "newporthub-media"

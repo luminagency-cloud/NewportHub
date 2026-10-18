@@ -1,0 +1,51 @@
+---
+import Base from '../layouts/Base.astro';
+import SearchForm from '../components/SearchForm.astro';
+import ListingCard from '../components/ListingCard.astro';
+import { allCategories, allTowns, categoriesWithCounts, searchListings } from '../lib/queries';
+
+const [grid, categories, towns, top] = await Promise.all([
+  categoriesWithCounts(),
+  allCategories(),
+  allTowns(),
+  searchListings({}),
+]);
+const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
+---
+<Base title="NewportHub" description="Find local businesses in Newport, Middletown, Portsmouth, Jamestown, and across Newport County, RI.">
+  <section class="mb-10 rounded-xl bg-sky-800 px-6 py-10 text-white">
+    <h1 class="mb-2 text-3xl font-bold">Local businesses in Newport County</h1>
+    <p class="mb-6 text-sky-100">Restaurants, shops, and services in Newport, RI and nearby towns.</p>
+    <div class="text-slate-900"><SearchForm categories={categories} towns={towns} /></div>
+  </section>
+
+  {spotlight.length > 0 && (
+    <section class="mb-10">
+      <h2 class="mb-4 text-xl font-semibold">Featured businesses</h2>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{spotlight.map((l) => <ListingCard listing={l} />)}</div>
+    </section>
+  )}
+
+  <section class="mb-10">
+    <h2 class="mb-4 text-xl font-semibold">Browse by category</h2>
+    <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {grid.filter((c) => c.n > 0).map((c) => (
+        <li>
+          <a href={`/${c.slug}/`} class="block rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-400 hover:shadow-sm">
+            <span class="font-medium">{c.name}</span>
+            <span class="block text-sm text-slate-500">{c.n} {c.n === 1 ? 'listing' : 'listings'}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="mb-4 text-xl font-semibold">Browse by town</h2>
+    <ul class="flex flex-wrap gap-2">
+      {towns.map((t) => (
+        <li><a href={`/${t.slug}/`} class="inline-block rounded-full border border-slate-300 bg-white px-4 py-1.5 hover:border-sky-400">{t.name}</a></li>
+      ))}
+    </ul>
+  </section>
+</Base>
