@@ -2,6 +2,7 @@
 // /[category]/[town]/ — the folder param is named `slug` because it shares a level with /[town]/.
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
+import BannerAd from '../../components/BannerAd.astro';
 import { getCategory, getTown, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
@@ -19,5 +20,8 @@ const title = `${category.name} in ${town.name}, ${town.state}`;
     <a href={`/${town.slug}/`} class="hover:underline">{town.name}</a>
   </nav>
   <h1 class="mb-6 text-2xl font-bold">{title}</h1>
-  <ListingGrid rows={rows} total={total} page={page} />
+  <div class="grid items-start gap-8 lg:grid-cols-[1fr_300px]">
+    <ListingGrid rows={rows} total={total} page={page} columns={2} />
+    <BannerAd placement="category_sidebar" class="lg:sticky lg:top-6 lg:self-start" />
+  </div>
 </Base>

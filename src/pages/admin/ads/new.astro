@@ -1,0 +1,30 @@
+---
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import AdForm from '../../../components/AdForm.astro';
+import { isAdmin } from '../../../lib/auth';
+import { parseAdForm, type AdFormValues } from '../../../lib/ad-form';
+import { saveAd } from '../../../lib/ads';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+let values: Partial<AdFormValues> = {};
+let errors: string[] = [];
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const parsed = parseAdForm(form);
+  values = parsed.values;
+  errors = parsed.errors;
+  if (!errors.length) {
+    const r = await saveAd(parsed.values, form.get('image'));
+    if ('id' in r) return Astro.redirect(`/admin/ads?msg=${encodeURIComponent(`Created “${parsed.values.name}”.`)}`, 303);
+    errors = [r.error];
+  }
+}
+---
+<Base title="New banner ad" noindex>
+  <AdminNav current="ads" />
+  <h1 class="mb-6 text-2xl font-bold">New banner ad</h1>
+  <AdForm values={values} errors={errors} submitLabel="Create ad" />
+</Base>

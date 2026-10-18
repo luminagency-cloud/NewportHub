@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import SearchForm from '../components/SearchForm.astro';
 import ListingCard from '../components/ListingCard.astro';
+import BannerAd from '../components/BannerAd.astro';
 import { allCategories, allTowns, categoriesWithCounts, searchListings } from '../lib/queries';
 
 const [grid, categories, towns, top] = await Promise.all([
@@ -13,6 +14,7 @@ const [grid, categories, towns, top] = await Promise.all([
 const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
 ---
 <Base title="NewportHub" description="Find local businesses in Newport, Middletown, Portsmouth, Jamestown, and across Newport County, RI.">
+  <BannerAd placement="home_top" class="mb-6" />
   <section class="mb-10 rounded-xl bg-sky-800 px-6 py-10 text-white">
     <h1 class="mb-2 text-3xl font-bold">Local businesses in Newport County</h1>
     <p class="mb-6 text-sky-100">Restaurants, shops, and services in Newport, RI and nearby towns.</p>

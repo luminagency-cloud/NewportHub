@@ -11,20 +11,30 @@ function sniff(b: Uint8Array): { ext: string; type: string } | null {
   return null;
 }
 
+export const MAX_BANNER_BYTES = 2 * 1024 * 1024;
+
 /**
- * Store an uploaded logo in R2. Returns the new key, null when no file was chosen, or an error message.
- * Keys are unique per upload so a pending logo never overwrites the live one.
+ * Store an uploaded image in R2 under `<prefix>/<uuid>.<ext>`. Returns the new key, null when no
+ * file was chosen, or an error message. Keys are unique per upload so a new image never
+ * overwrites one that is live.
  */
-export async function uploadLogo(file: FormDataEntryValue | null, listingId: number): Promise<{ key: string | null; error?: string }> {
+export async function uploadImage(
+  file: FormDataEntryValue | null,
+  prefix: string,
+  opts: { maxBytes: number; label: string },
+): Promise<{ key: string | null; error?: string }> {
   if (!(file instanceof File) || file.size === 0) return { key: null };
-  if (file.size > MAX_LOGO_BYTES) return { key: null, error: 'Logo must be 1 MB or smaller.' };
+  if (file.size > opts.maxBytes) return { key: null, error: `${opts.label} must be ${opts.maxBytes / 1024 / 1024} MB or smaller.` };
   const bytes = new Uint8Array(await file.arrayBuffer());
   const kind = sniff(bytes);
-  if (!kind) return { key: null, error: 'Logo must be a PNG, JPEG, or WebP image.' };
-  const key = `logos/${listingId}/${crypto.randomUUID()}.${kind.ext}`;
+  if (!kind) return { key: null, error: `${opts.label} must be a PNG, JPEG, or WebP image.` };
+  const key = `${prefix}/${crypto.randomUUID()}.${kind.ext}`;
   await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: kind.type } });
   return { key };
 }
+
+export const uploadLogo = (file: FormDataEntryValue | null, listingId: number) =>
+  uploadImage(file, `logos/${listingId}`, { maxBytes: MAX_LOGO_BYTES, label: 'Logo' });
 
 /** Delete an R2 object, ignoring empty keys. */
 export async function deleteMedia(key: string | null | undefined) {

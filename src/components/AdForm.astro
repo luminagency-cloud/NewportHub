@@ -1,0 +1,44 @@
+---
+import { AD_PLACEMENTS, type BannerAd } from '../db/schema';
+import { PLACEMENT_LABELS, type AdFormValues } from '../lib/ad-form';
+
+interface Props {
+  values?: Partial<AdFormValues>;
+  ad?: BannerAd;
+  errors?: string[];
+  submitLabel: string;
+}
+const { values = {}, ad, errors = [], submitLabel } = Astro.props;
+const input = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
+const label = 'block text-sm font-medium text-slate-700';
+---
+<form method="post" enctype="multipart/form-data" class="max-w-2xl space-y-5">
+  {errors.length > 0 && (
+    <div class="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">
+      <ul class="list-disc pl-5">{errors.map((e) => <li>{e}</li>)}</ul>
+    </div>
+  )}
+  <label class={label}>Name (internal) *<input name="name" required maxlength="80" value={values.name ?? ''} placeholder="Advertiser – campaign" class={input} /></label>
+  <label class={label}>Placement *
+    <select name="placement" required class={input}>
+      {AD_PLACEMENTS.map((p) => <option value={p} selected={p === values.placement}>{PLACEMENT_LABELS[p]}</option>)}
+    </select>
+  </label>
+  <label class={label}>Link URL *<input name="linkUrl" type="url" required maxlength="500" value={values.linkUrl ?? ''} placeholder="https://" class={input} /></label>
+  <label class={label}>Alt text * <span class="font-normal text-slate-500">(what the image says, for screen readers)</span>
+    <input name="altText" required maxlength="150" value={values.altText ?? ''} class={input} />
+  </label>
+  <div class="grid gap-5 sm:grid-cols-2">
+    <label class={label}>Start date *<input name="startDate" type="date" required value={values.startDate ?? ''} class={input} /></label>
+    <label class={label}>End date * <span class="font-normal text-slate-500">(inclusive)</span><input name="endDate" type="date" required value={values.endDate ?? ''} class={input} /></label>
+  </div>
+  <label class="flex items-center gap-2 text-sm"><input name="active" type="checkbox" checked={values.active ?? true} /> Active</label>
+  <div>
+    <label class={label}>Banner image {ad ? '(leave empty to keep the current one)' : '*'} <span class="font-normal text-slate-500">PNG, JPEG, or WebP, up to 2 MB</span>
+      <input name="image" type="file" accept="image/png,image/jpeg,image/webp" required={!ad} class="mt-1 block text-sm" />
+    </label>
+    {ad && <img src={`/media/${ad.imageR2Key}`} alt="Current banner" class="mt-2 max-h-40 rounded border" />}
+  </div>
+  <p class="text-xs text-slate-500">Dates use Newport time (America/New_York). Several live ads in one placement rotate at random.</p>
+  <button type="submit" class="rounded-md bg-sky-700 px-5 py-2 font-medium text-white hover:bg-sky-800">{submitLabel}</button>
+</form>

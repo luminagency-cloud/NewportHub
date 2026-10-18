@@ -29,6 +29,20 @@
       "when": 1792364574793,
       "tag": "0003_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792365394104,
+      "tag": "0004_banner_ads",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792365394955,
+      "tag": "0005_reserve_go_slug",
+      "breakpoints": true
     }
   ]
 }

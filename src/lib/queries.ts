@@ -118,3 +118,43 @@ export async function getPublishedListing(slug: string) {
       .limit(1)
   )[0];
 }
+
+/** Every indexable URL path with its last-modified time. Only pages that have published listings. */
+export async function sitemapEntries(): Promise<{ path: string; lastmod: Date | null }[]> {
+  const published = eq(listings.status, 'published');
+  const [cats, ts, combos, items] = await Promise.all([
+    db()
+      .select({ slug: categories.slug, lastmod: sql<number>`max(${listings.updatedAt})` })
+      .from(categories)
+      .innerJoin(listings, and(eq(listings.categoryId, categories.id), published))
+      .groupBy(categories.id),
+    db()
+      .select({ slug: towns.slug, lastmod: sql<number>`max(${listings.updatedAt})` })
+      .from(towns)
+      .innerJoin(listings, and(eq(listings.townId, towns.id), published))
+      .groupBy(towns.id),
+    db()
+      .select({ cat: categories.slug, town: towns.slug, lastmod: sql<number>`max(${listings.updatedAt})` })
+      .from(listings)
+      .innerJoin(categories, eq(listings.categoryId, categories.id))
+      .innerJoin(towns, eq(listings.townId, towns.id))
+      .where(published)
+      .groupBy(categories.id, towns.id),
+    db()
+      .select({ slug: listings.slug, lastmod: listings.updatedAt })
+      .from(listings)
+      .innerJoin(categories, eq(listings.categoryId, categories.id))
+      .innerJoin(towns, eq(listings.townId, towns.id))
+      .where(published),
+  ]);
+  // Aggregates come back as raw unix seconds; mapped columns are already Dates.
+  const at = (s: number | null) => (s ? new Date(s * 1000) : null);
+  const newest = [...items.map((i) => i.lastmod.getTime())].reduce((a, b) => Math.max(a, b), 0);
+  return [
+    { path: '/', lastmod: newest ? new Date(newest) : null },
+    ...cats.map((c) => ({ path: `/${c.slug}/`, lastmod: at(c.lastmod) })),
+    ...ts.map((t) => ({ path: `/${t.slug}/`, lastmod: at(t.lastmod) })),
+    ...combos.map((c) => ({ path: `/${c.cat}/${c.town}/`, lastmod: at(c.lastmod) })),
+    ...items.map((i) => ({ path: `/listing/${i.slug}`, lastmod: i.lastmod })),
+  ];
+}

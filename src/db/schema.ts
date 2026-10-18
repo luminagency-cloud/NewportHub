@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /** Opening hours, keyed by English day name. An empty array means closed that day. */
 export type Hours = Partial<Record<Weekday, { open: string; close: string }[]>>;
@@ -74,18 +74,37 @@ export const listings = sqliteTable(
   ],
 );
 
+export const AD_PLACEMENTS = ['home_top', 'category_sidebar'] as const;
+export type AdPlacement = (typeof AD_PLACEMENTS)[number];
+
 export const bannerAds = sqliteTable(
   'banner_ads',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Admin-facing label, e.g. advertiser + campaign. */
+    name: text('name').notNull().default(''),
+    /** Image alt text, read out by screen readers. */
+    altText: text('alt_text').notNull().default(''),
     imageR2Key: text('image_r2_key').notNull(),
     linkUrl: text('link_url').notNull(),
-    placement: text('placement').notNull(),
-    startDate: text('start_date').notNull(), // ISO date, YYYY-MM-DD
-    endDate: text('end_date').notNull(),
+    placement: text('placement', { enum: AD_PLACEMENTS }).notNull(),
+    startDate: text('start_date').notNull(), // ISO date, YYYY-MM-DD, inclusive, America/New_York
+    endDate: text('end_date').notNull(), // inclusive
     active: integer('active', { mode: 'boolean' }).notNull().default(true),
   },
   (t) => [index('banner_ads_placement_idx').on(t.placement, t.active)],
+);
+
+/** Daily impression and click counts per ad: one row per ad per day, incremented in place. */
+export const adStats = sqliteTable(
+  'ad_stats',
+  {
+    adId: integer('ad_id').notNull().references(() => bannerAds.id, { onDelete: 'cascade' }),
+    day: text('day').notNull(), // YYYY-MM-DD, America/New_York
+    impressions: integer('impressions').notNull().default(0),
+    clicks: integer('clicks').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.adId, t.day] })],
 );
 
 /** Ownership claims on existing listings. An email-domain match is approved on creation. */
@@ -143,3 +162,4 @@ export type Town = typeof towns.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
 export type Claim = typeof claims.$inferSelect;
 export type PendingEdit = typeof pendingEdits.$inferSelect;
+export type BannerAd = typeof bannerAds.$inferSelect;

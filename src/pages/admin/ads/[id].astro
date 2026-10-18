@@ -1,0 +1,32 @@
+---
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import AdForm from '../../../components/AdForm.astro';
+import { isAdmin } from '../../../lib/auth';
+import { parseAdForm, type AdFormValues } from '../../../lib/ad-form';
+import { getAd, saveAd } from '../../../lib/ads';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+const ad = await getAd(Number(Astro.params.id));
+if (!ad) return new Response(null, { status: 404 });
+
+let values: Partial<AdFormValues> = ad;
+let errors: string[] = [];
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const parsed = parseAdForm(form);
+  values = parsed.values;
+  errors = parsed.errors;
+  if (!errors.length) {
+    const r = await saveAd(parsed.values, form.get('image'), ad);
+    if ('id' in r) return Astro.redirect(`/admin/ads?msg=${encodeURIComponent(`Saved “${parsed.values.name}”.`)}`, 303);
+    errors = [r.error];
+  }
+}
+---
+<Base title={`Edit ad: ${ad.name}`} noindex>
+  <AdminNav current="ads" />
+  <h1 class="mb-6 text-2xl font-bold">Edit ad</h1>
+  <AdForm values={values} ad={ad} errors={errors} submitLabel="Save" />
+</Base>

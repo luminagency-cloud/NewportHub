@@ -39,7 +39,7 @@ const mapUrl = l.lat != null && l.lng != null
 const paid = l.tier !== 'free';
 const { userId } = Astro.locals.auth();
 ---
-<Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={l.description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`}>
+<Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={l.description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`} ogImage={logo}>
   <script slot="head" type="application/ld+json" set:html={jsonLdText} />
   <nav class="mb-4 text-sm text-slate-500">
     <a href="/" class="hover:underline">Home</a>{' / '}

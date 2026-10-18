@@ -7,8 +7,10 @@ interface Props {
   rows: Card[];
   total: number;
   page: number;
+  /** Max columns on large screens; 2 leaves room for a sidebar. */
+  columns?: 2 | 3;
 }
-const { rows, total, page } = Astro.props;
+const { rows, total, page, columns = 3 } = Astro.props;
 const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
 function pageHref(n: number) {
@@ -21,7 +23,7 @@ function pageHref(n: number) {
 {rows.length === 0 ? (
   <p class="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500">No listings found.</p>
 ) : (
-  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  <div class={`grid gap-4 sm:grid-cols-2 ${columns === 3 ? 'lg:grid-cols-3' : ''}`}>
     {rows.map((l) => <ListingCard listing={l} />)}
   </div>
 )}

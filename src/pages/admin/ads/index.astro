@@ -1,0 +1,83 @@
+---
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import { isAdmin } from '../../../lib/auth';
+import { adsWithStats, deleteAd, getAd, isLive } from '../../../lib/ads';
+import { adDay, PLACEMENT_LABELS } from '../../../lib/ad-form';
+import { db } from '../../../lib/db';
+import { bannerAds } from '../../../db/schema';
+import { eq } from 'drizzle-orm';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const id = Number(form.get('id'));
+  const action = String(form.get('action'));
+  let msg = 'Unknown action.';
+  if (action === 'delete') msg = (await deleteAd(id)) ? 'Ad deleted.' : 'Ad not found.';
+  if (action === 'toggle') {
+    const ad = await getAd(id);
+    if (ad) {
+      await db().update(bannerAds).set({ active: !ad.active }).where(eq(bannerAds.id, id));
+      msg = ad.active ? `Paused “${ad.name}”.` : `Resumed “${ad.name}”.`;
+    } else msg = 'Ad not found.';
+  }
+  return Astro.redirect(`/admin/ads?msg=${encodeURIComponent(msg)}`, 303);
+}
+
+const rows = await adsWithStats();
+const today = adDay();
+const state = (a: (typeof rows)[number]['ad']) =>
+  !a.active ? ['Paused', 'bg-slate-100 text-slate-700'] : isLive(a, today) ? ['Live', 'bg-green-100 text-green-900'] : a.startDate > today ? ['Scheduled', 'bg-sky-100 text-sky-900'] : ['Ended', 'bg-slate-100 text-slate-500'];
+const ctr = (c: number, i: number) => (i ? `${((c / i) * 100).toFixed(1)}%` : '—');
+const msg = Astro.url.searchParams.get('msg');
+---
+<Base title="Banner ads" noindex>
+  <AdminNav current="ads" />
+  <div class="mb-6 flex items-center justify-between">
+    <h1 class="text-2xl font-bold">Banner ads</h1>
+    <a href="/admin/ads/new" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800">New ad</a>
+  </div>
+  {msg && <p class="mb-6 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+  {rows.length === 0 ? (
+    <p class="rounded-lg border border-dashed border-slate-300 p-6 text-slate-600">No ads yet.</p>
+  ) : (
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-50 text-xs text-slate-500">
+          <tr><th class="p-3">Ad</th><th class="p-3">Placement</th><th class="p-3">Dates</th><th class="p-3">Status</th>
+            <th class="p-3 text-right">Impr. (30d / all)</th><th class="p-3 text-right">Clicks (30d / all)</th><th class="p-3 text-right">CTR 30d</th><th class="p-3"></th></tr>
+        </thead>
+        <tbody>
+          {rows.map(({ ad, impressions, clicks, impressions30, clicks30 }) => {
+            const [label, cls] = state(ad);
+            return (
+              <tr class="border-t border-slate-100 align-middle">
+                <td class="p-3"><div class="flex items-center gap-3">
+                  <img src={`/media/${ad.imageR2Key}`} alt="" class="h-10 w-20 rounded border object-cover" loading="lazy" />
+                  <div><p class="font-medium">{ad.name || `Ad #${ad.id}`}</p><p class="max-w-[16rem] truncate text-xs text-slate-500">{ad.linkUrl}</p></div>
+                </div></td>
+                <td class="p-3 text-xs">{PLACEMENT_LABELS[ad.placement].split(' (')[0]}</td>
+                <td class="whitespace-nowrap p-3 text-xs">{ad.startDate} → {ad.endDate}</td>
+                <td class="p-3"><span class={`rounded px-2 py-0.5 text-xs ${cls}`}>{label}</span></td>
+                <td class="p-3 text-right tabular-nums">{impressions30.toLocaleString('en-US')} / {impressions.toLocaleString('en-US')}</td>
+                <td class="p-3 text-right tabular-nums">{clicks30.toLocaleString('en-US')} / {clicks.toLocaleString('en-US')}</td>
+                <td class="p-3 text-right tabular-nums">{ctr(clicks30, impressions30)}</td>
+                <td class="p-3"><div class="flex justify-end gap-2">
+                  <a href={`/admin/ads/${ad.id}`} class="text-sky-700 hover:underline">Edit</a>
+                  <form method="post"><input type="hidden" name="action" value="toggle" /><input type="hidden" name="id" value={ad.id} />
+                    <button class="text-slate-700 hover:underline">{ad.active ? 'Pause' : 'Resume'}</button></form>
+                  <form method="post" onsubmit="return confirm('Delete this ad and its stats?')"><input type="hidden" name="action" value="delete" /><input type="hidden" name="id" value={ad.id} />
+                    <button class="text-red-700 hover:underline">Delete</button></form>
+                </div></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+  <p class="mt-3 text-xs text-slate-500">Impressions and clicks exclude known bots. Days are Newport time.</p>
+</Base>

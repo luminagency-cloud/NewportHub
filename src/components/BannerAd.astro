@@ -1,0 +1,27 @@
+---
+// Renders one rotating ad for a placement, or nothing. The impression is counted after the
+// response is sent (waitUntil), so tracking never slows the page.
+import type { AdPlacement } from '../db/schema';
+import { pickAd, recordAdEvent } from '../lib/ads';
+
+interface Props {
+  placement: AdPlacement;
+  class?: string;
+}
+const { placement, class: className = '' } = Astro.props;
+const ad = await pickAd(placement).catch((err) => (console.error('Banner ad lookup failed', err), undefined));
+if (ad) {
+  Astro.locals.cfContext?.waitUntil(
+    recordAdEvent(ad.id, 'impression', Astro.request.headers.get('user-agent')).catch((err) => console.error('Ad impression failed', err)),
+  );
+}
+const size = placement === 'home_top' ? { width: 1200, height: 200 } : { width: 300, height: 250 };
+---
+{ad && (
+  <aside class={`text-center ${className}`} aria-label="Advertisement">
+    <a href={`/go/${ad.id}`} rel="sponsored noopener" target="_blank" class="inline-block">
+      <img src={`/media/${ad.imageR2Key}`} alt={ad.altText} width={size.width} height={size.height} class="h-auto max-w-full rounded" loading={placement === 'home_top' ? 'eager' : 'lazy'} />
+    </a>
+    <p class="mt-1 text-[11px] uppercase tracking-wide text-slate-400">Sponsored</p>
+  </aside>
+)}

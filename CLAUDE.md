@@ -47,6 +47,14 @@ src/lib/billing-tier.ts        pure subscription → tier rules (unit-tested)
 src/pages/api/stripe/webhook.ts  Stripe webhook (signature-verified)
 src/pages/account/listings/[id]/upgrade.ts  POST → Stripe Checkout (subscription mode)
 src/pages/account/billing/index.ts          POST → Stripe customer portal
+src/lib/ads.ts                 banner ads: pickAd (rotation), recordAdEvent (stats), admin save/delete
+src/lib/ad-form.ts             pure ad helpers: form validation, adDay (NY time), isBot (unit-tested)
+src/components/BannerAd.astro  renders one ad for a placement; counts the impression via waitUntil
+src/pages/go/[id].ts           ad click: count, then 302 to the stored link
+src/pages/admin/ads/           banner ad CRUD + stats
+src/pages/sitemap.xml.ts       sitemap (only pages with published listings)
+src/pages/robots.txt.ts        robots.txt
+public/og-default.png          1200×630 default social card (regenerate with PIL if the brand changes)
 scripts/seed-outscraper.ts     CSV import
 ```
 
@@ -77,7 +85,7 @@ scripts/seed-outscraper.ts     CSV import
   which does not work on D1; replace it with `PRAGMA defer_foreign_keys = on` and check the
   generated `INSERT … SELECT` (in 0002 it selected new columns from the old table). Test a rebuild
   migration on a seeded local DB before applying it remotely.
-- Not built yet: banner ad display, email notifications.
+- Not built yet: email notifications.
 
 ## Owners and moderation
 
@@ -123,6 +131,33 @@ scripts/seed-outscraper.ts     CSV import
   four events above — its signing secret is `STRIPE_WEBHOOK_SECRET`. Use the same API version as the
   SDK (`stripe` v23 → `2026-09-30.endive`); the code reads invoice → subscription from
   `invoice.parent.subscription_details` and period end from subscription items.
+
+## Banner ads
+
+- Placements (`AD_PLACEMENTS` in the schema): `home_top` (top of `/`) and `category_sidebar`
+  (`/[category]/` and `/[category]/[town]/`; not town pages). Adding one: extend the enum,
+  `PLACEMENT_LABELS`, and put `<BannerAd placement="…" />` where it shows.
+- An ad shows when `active` and `start_date <= today <= end_date` (inclusive, America/New_York).
+  Several eligible ads rotate by uniform random pick per request.
+- Stats live in `ad_stats` (one row per ad per day, incremented with an upsert). Impressions count
+  when an ad renders, clicks at `/go/<id>`; both run in `waitUntil` so they never delay the
+  response. User agents matching `isBot` (crawlers, link previewers, headless browsers, curl) are
+  not counted, so headless-browser tests show 0 impressions by design.
+- `/go/<id>` only ever redirects to the stored `link_url` (http/https, validated on save), so it is
+  not an open redirect. Clicks outside the ad's dates still redirect but are not counted.
+- Images: PNG/JPEG/WebP, max 2 MB, R2 key `banners/<placement>/<uuid>.<ext>`; replacing or deleting
+  an ad deletes the old object. `go` is a reserved slug (migration 0005).
+
+## SEO
+
+- `Base.astro` emits canonical, description (trimmed to ~160 chars), Open Graph, and Twitter card
+  tags. `canonicalPath` drops query strings except `?page=N` for N > 1 (each page of a list is its
+  own canonical). `ogImage` defaults to `/og-default.png`; listing pages pass their logo.
+- `/sitemap.xml` lists home, categories, towns, category+town pairs, and listings — only those with
+  published listings, so empty combinations and pending listings never appear. One file is fine up
+  to 50,000 URLs; switch to a sitemap index before that.
+- `/robots.txt` disallows account, admin, api, go, login, signup, and claim pages, and points to the
+  sitemap. Private pages also send `noindex`.
 
 ### Testing billing locally with the Stripe CLI
 
@@ -186,10 +221,33 @@ npx wrangler d1 execute DB --local --command "SELECT count(*) FROM listings"
 npx wrangler r2 object put newporthub-media/logos/x.png --local --file ./x.png
 ```
 
-Remote. The newporthub.com zone is on Cloudflare; `routes` in `wrangler.toml` attaches the Worker
-as a Custom Domain on deploy. First deploy: `npx wrangler d1 create newporthub` and put the id
-in `wrangler.toml`, `npx wrangler r2 bucket create newporthub-media`, then `npm run db:migrate:remote`,
-`npm run seed:remote`, and `npm run build && npx wrangler deploy`.
+## Deploy (Cloudflare Workers)
+
+Production is the Worker `newporthub` with Custom Domain newporthub.com (`routes` in
+`wrangler.toml`; deploy creates the DNS record and certificate). D1 `newporthub`, R2
+`newporthub-media`, and the adapter's `SESSION` KV already exist. Deploy from a machine with
+`npx wrangler login` done:
+
+```sh
+git pull && npm ci
+npx wrangler whoami                 # right account?
+npx wrangler secret list            # names only; see the Environment table
+npm run check && npm test
+npm run db:migrate:remote           # ALWAYS before deploying code that needs it
+npm run build && npx wrangler deploy
+curl -sI https://newporthub.com/ https://newporthub.com/sitemap.xml https://newporthub.com/robots.txt
+```
+
+- Migrations go first. Keep them additive (new tables/columns with constant defaults), so the code
+  still running during the deploy keeps working. SQLite cannot add a column whose default is an
+  expression such as `unixepoch()`.
+- Rollback: `npx wrangler rollback` restores the previous Worker version (code only). Migrations are
+  not rolled back, which is why they must be additive.
+- Logs: `npx wrangler tail --format pretty`.
+- Secret changes redeploy the Worker by themselves; no build needed.
+- Never run `seed:remote` with `data/sample-outscraper.csv` (fictional data).
+- First-ever setup (done 2026-10-18, kept for rebuilding from scratch): `npx wrangler d1 create
+  newporthub` → id into `wrangler.toml`; `npx wrangler r2 bucket create newporthub-media`.
 
 `npm run preview` passes `--local-upstream 127.0.0.1:8787`: without it, wrangler dev rewrites the
 request host to the custom domain in `routes`, and Clerk redirects signed-in requests to the real
