@@ -34,7 +34,8 @@ src/pages/listing/[slug]/claim.astro  claim an unclaimed listing (signed in)
 src/pages/search.astro         ?q=&category=&town=&page=
 src/pages/account/             owner area: overview, new listing, edit own listing (signed in)
 src/pages/admin/index.astro    moderation queues (ADMIN_USER_IDS only)
-src/middleware.ts              Clerk; /account and /listing/*/claim need sign-in; /admin is 404 for non-admins
+src/middleware.ts              Clerk; /account and /listing/*/claim need sign-in; /admin is 404 for non-admins.
+                               Clerk keys missing or Clerk failing → public pages still render signed out; auth pages 503
 src/lib/auth.ts                isAdmin(), sessionUser() (Clerk user + verified emails)
 src/lib/verify.ts              email-domain claim verification
 src/lib/owner.ts               owner writes: claims, submissions, edits
@@ -96,7 +97,8 @@ scripts/seed-outscraper.ts     CSV import
 | `CLERK_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put CLERK_SECRET_KEY` | secret |
 | `ADMIN_USER_IDS` | `.dev.vars`; `npx wrangler secret put ADMIN_USER_IDS` | Clerk user ids |
 
-See `.dev.vars.example`. `.dev.vars` is gitignored. Run `npm run cf-typegen` after adding variables.
+The names are Astro's: `PUBLIC_CLERK_PUBLISHABLE_KEY`, not the `NEXT_PUBLIC_…` name the Clerk
+dashboard shows for Next.js (a key under that name is ignored). See `.dev.vars.example`. `.dev.vars` is gitignored. Run `npm run cf-typegen` after adding variables.
 
 **Testing auth locally:** Clerk sign-up shows a bot check (Cloudflare Turnstile) in headless
 browsers. Do not try to get past it. Create test users with the Clerk Backend API instead
