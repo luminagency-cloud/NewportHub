@@ -1,0 +1,186 @@
+---
+// Middleware returns 404 here for anyone not in ADMIN_USER_IDS; the page checks again so it never relies on that alone.
+import { clerkClient } from '@clerk/astro/server';
+import Base from '../../layouts/Base.astro';
+import { WEEKDAYS, type Hours, type ListingChanges } from '../../db/schema';
+import {
+  approveClaim, approveEdit, approveListing, lookups, moderationQueues, rejectClaim, rejectEdit, rejectListing,
+} from '../../lib/admin';
+import { formatDay } from '../../lib/hours-parse';
+import { isAdmin } from '../../lib/auth';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+const adminId = userId;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const id = Number(form.get('id'));
+  const note = String(form.get('note') ?? '').trim().slice(0, 500) || null;
+  const actions: Record<string, () => Promise<{ ok: string } | { error: string }>> = {
+    'approve-listing': () => approveListing(id, form),
+    'reject-listing': () => rejectListing(id),
+    'approve-claim': () => approveClaim(id, adminId),
+    'reject-claim': () => rejectClaim(id, adminId),
+    'approve-edit': () => approveEdit(id, adminId),
+    'reject-edit': () => rejectEdit(id, adminId, note),
+  };
+  const run = actions[String(form.get('action'))];
+  const r = run ? await run() : { error: 'Unknown action.' };
+  const q = 'ok' in r ? `ok=${encodeURIComponent(r.ok)}` : `error=${encodeURIComponent(r.error)}`;
+  return Astro.redirect(`/admin?${q}`, 303);
+}
+
+const [{ newListings, openClaims, edits }, { categories, towns }] = await Promise.all([moderationQueues(), lookups()]);
+const catName = new Map(categories.map((c) => [c.id, c.name]));
+const townName = new Map(towns.map((t) => [t.id, `${t.name}, ${t.state}`]));
+
+// Submitter emails for new listings come from Clerk; the queue still works if the lookup fails.
+const submitterEmail = new Map<string, string>();
+const submitterIds = [...new Set(newListings.map((r) => r.listing.ownerUserId).filter((v): v is string => !!v))];
+if (submitterIds.length) {
+  try {
+    const { data } = await clerkClient(Astro).users.getUserList({ userId: submitterIds, limit: 100 });
+    for (const u of data) submitterEmail.set(u.id, u.primaryEmailAddress?.emailAddress ?? u.id);
+  } catch {}
+}
+
+const hoursText = (h: Hours | null | undefined) =>
+  h ? WEEKDAYS.filter((d) => d in h).map((d) => `${d.slice(0, 3)} ${formatDay(h[d])}`).join(' · ') : '';
+const FIELD_LABELS: Record<keyof ListingChanges, string> = {
+  name: 'Name', categoryId: 'Category', townId: 'Town', address: 'Address', phone: 'Phone', website: 'Website',
+  email: 'Email', description: 'Description', hours: 'Hours', logoR2Key: 'Logo',
+};
+function show(field: keyof ListingChanges, value: unknown): string {
+  if (value == null || value === '') return '—';
+  if (field === 'categoryId') return catName.get(value as number) ?? `#${value}`;
+  if (field === 'townId') return townName.get(value as number) ?? `#${value}`;
+  if (field === 'hours') return hoursText(value as Hours);
+  return String(value);
+}
+
+const ok = Astro.url.searchParams.get('ok');
+const error = Astro.url.searchParams.get('error');
+const btn = 'rounded-md px-3 py-1.5 text-sm font-medium';
+const approve = `${btn} bg-green-700 text-white hover:bg-green-800`;
+const reject = `${btn} border border-red-300 bg-white text-red-800 hover:bg-red-50`;
+const card = 'rounded-lg border border-slate-200 bg-white p-4';
+const field = 'rounded-md border border-slate-300 bg-white px-2 py-1 text-sm';
+---
+<Base title="Admin" noindex>
+  <h1 class="mb-6 text-2xl font-bold">Moderation</h1>
+  {ok && <p class="mb-6 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{ok}</p>}
+  {error && <p class="mb-6 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
+
+  <section class="mb-10">
+    <h2 class="mb-3 text-lg font-semibold">New listings ({newListings.length})</h2>
+    {newListings.length === 0 && <p class="text-sm text-slate-500">Nothing waiting.</p>}
+    <div class="space-y-4">
+      {newListings.map(({ listing: l, categoryName, townName: tName }) => (
+        <article class={card}>
+          <div class="flex gap-4">
+            {l.logoR2Key && <img src={`/media/${l.logoR2Key}`} alt="" width="64" height="64" class="h-16 w-16 rounded border object-contain" />}
+            <div class="min-w-0 flex-1 text-sm">
+              <h3 class="text-base font-semibold">{l.name}</h3>
+              <p class="text-slate-600">
+                {categoryName ?? <span class="text-amber-800">New category: “{l.suggestedCategory}”</span>} ·{' '}
+                {tName ?? <span class="text-amber-800">New town: “{l.suggestedTown}”</span>}
+              </p>
+              <p class="text-slate-500">Submitted by {submitterEmail.get(l.ownerUserId ?? '') ?? l.ownerUserId ?? 'unknown'} · {l.createdAt.toLocaleDateString('en-US')}</p>
+              <dl class="mt-2 grid gap-x-4 sm:grid-cols-[8rem_1fr]">
+                {([['Address', l.address], ['Phone', l.phone], ['Website', l.website], ['Email', l.email], ['Hours', hoursText(l.hours)], ['Description', l.description]] as const)
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => (<><dt class="text-slate-500">{k}</dt><dd class="whitespace-pre-line break-words">{v}</dd></>))}
+              </dl>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
+            <form method="post" class="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="action" value="approve-listing" /><input type="hidden" name="id" value={l.id} />
+              <label class="text-xs text-slate-600">Category<br />
+                <select name="categoryId" class={field}>
+                  {categories.map((c) => <option value={c.id} selected={c.id === l.categoryId}>{c.name}</option>)}
+                  <option value="new" selected={!l.categoryId}>New…</option>
+                </select>
+              </label>
+              <input name="newCategory" value={l.suggestedCategory ?? ''} placeholder="New category name" aria-label="New category name" class={field} />
+              <label class="text-xs text-slate-600">Town<br />
+                <select name="townId" class={field}>
+                  {towns.map((t) => <option value={t.id} selected={t.id === l.townId}>{t.name}</option>)}
+                  <option value="new" selected={!l.townId}>New…</option>
+                </select>
+              </label>
+              <input name="newTown" value={l.suggestedTown ?? ''} placeholder="New town name" aria-label="New town name" class={field} />
+              <input name="newTownState" value="RI" maxlength="2" aria-label="New town state" class={`${field} w-14 uppercase`} />
+              <button class={approve}>Approve &amp; publish</button>
+            </form>
+            <form method="post">
+              <input type="hidden" name="action" value="reject-listing" /><input type="hidden" name="id" value={l.id} />
+              <button class={reject}>Reject</button>
+            </form>
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="mb-3 text-lg font-semibold">Claims ({openClaims.length})</h2>
+    {openClaims.length === 0 && <p class="text-sm text-slate-500">Nothing waiting.</p>}
+    <div class="space-y-4">
+      {openClaims.map(({ claim: c, listingName, listingSlug, website, ownerUserId }) => (
+        <article class={`${card} text-sm`}>
+          <p><strong>{c.userEmail}</strong> claims <a href={`/listing/${listingSlug}`} class="text-sky-700 hover:underline" target="_blank">{listingName}</a></p>
+          <p class="text-slate-500">Website: {website ?? '—'} · {c.createdAt.toLocaleDateString('en-US')}</p>
+          {ownerUserId && <p class="text-amber-800">This listing already has an owner.</p>}
+          {c.message && <p class="mt-2 whitespace-pre-line rounded bg-slate-50 p-2">{c.message}</p>}
+          <div class="mt-3 flex gap-2">
+            <form method="post"><input type="hidden" name="action" value="approve-claim" /><input type="hidden" name="id" value={c.id} /><button class={approve}>Approve</button></form>
+            <form method="post"><input type="hidden" name="action" value="reject-claim" /><input type="hidden" name="id" value={c.id} /><button class={reject}>Reject</button></form>
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <section>
+    <h2 class="mb-3 text-lg font-semibold">Edits to live listings ({edits.length})</h2>
+    {edits.length === 0 && <p class="text-sm text-slate-500">Nothing waiting.</p>}
+    <div class="space-y-4">
+      {edits.map(({ edit: e, listing: l }) => (
+        <article class={`${card} text-sm`}>
+          <p><a href={`/listing/${l.slug}`} class="font-semibold text-sky-700 hover:underline" target="_blank">{l.name}</a> <span class="text-slate-500">· by {e.userEmail} · {e.updatedAt.toLocaleDateString('en-US')}</span></p>
+          <table class="mt-2 w-full table-fixed text-left">
+            <thead class="text-xs text-slate-500"><tr><th class="w-28 py-1">Field</th><th>Now</th><th>Proposed</th></tr></thead>
+            <tbody>
+              {(Object.keys(e.changes) as (keyof ListingChanges)[]).map((k) => (
+                <tr class="border-t border-slate-100 align-top">
+                  <th class="py-1 font-normal text-slate-500">{FIELD_LABELS[k]}</th>
+                  {k === 'logoR2Key' ? (
+                    <>
+                      <td class="py-1">{l.logoR2Key ? <img src={`/media/${l.logoR2Key}`} alt="Current logo" width="48" height="48" class="h-12 w-12 object-contain" /> : '—'}</td>
+                      <td class="py-1">{e.changes.logoR2Key ? <img src={`/media/${e.changes.logoR2Key}`} alt="Proposed logo" width="48" height="48" class="h-12 w-12 object-contain" /> : '—'}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td class="whitespace-pre-line break-words py-1 pr-3 text-slate-500 line-through decoration-slate-300">{show(k, l[k])}</td>
+                      <td class="whitespace-pre-line break-words py-1">{show(k, e.changes[k])}</td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <form method="post"><input type="hidden" name="action" value="approve-edit" /><input type="hidden" name="id" value={e.id} /><button class={approve}>Approve</button></form>
+            <form method="post" class="flex gap-2">
+              <input type="hidden" name="action" value="reject-edit" /><input type="hidden" name="id" value={e.id} />
+              <input name="note" maxlength="500" placeholder="Reason (shown to the owner)" aria-label="Reason for rejecting" class={`${field} w-64`} />
+              <button class={reject}>Reject</button>
+            </form>
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+</Base>

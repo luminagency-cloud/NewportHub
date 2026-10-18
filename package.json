@@ -4,17 +4,19 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "npm run build && wrangler dev",
+    "preview": "npm run build && wrangler dev --local-upstream 127.0.0.1:8787 --upstream-protocol http",
     "check": "astro check && tsc -p scripts",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "seed:local": "tsx scripts/seed-outscraper.ts --local",
-    "seed:remote": "tsx scripts/seed-outscraper.ts --remote"
+    "seed:remote": "tsx scripts/seed-outscraper.ts --remote",
+    "test": "tsx --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.4.0",
+    "@clerk/astro": "^4.1.14",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.4.0",
     "drizzle-orm": "^0.45.4",

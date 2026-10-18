@@ -1,0 +1,30 @@
+---
+import Base from '../../layouts/Base.astro';
+import ListingForm from '../../components/ListingForm.astro';
+import { sessionUser } from '../../lib/auth';
+import { parseListingForm, type ListingFormValues } from '../../lib/listing-form';
+import { formOptions, submitListing } from '../../lib/owner';
+
+const opts = await formOptions();
+let values: Partial<ListingFormValues> = {};
+let errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const user = (await sessionUser(Astro))!;
+  const form = await Astro.request.formData();
+  const parsed = parseListingForm(form, { ...opts, allowSuggestions: true });
+  values = parsed.values;
+  errors = parsed.errors;
+  if (!errors.length) {
+    const { logoError } = await submitListing(user, parsed.values, form.get('logo'));
+    // The listing is saved even if the logo was refused; send them to edit it to retry the logo.
+    if (!logoError) return Astro.redirect('/account?done=submitted', 303);
+    errors = [`Listing saved, but the logo was not: ${logoError} Upload it again from My listings.`];
+  }
+}
+---
+<Base title="Add a new business" noindex>
+  <h1 class="mb-2 text-2xl font-bold">Add a new business</h1>
+  <p class="mb-6 text-slate-600">New listings are reviewed before they appear on NewportHub.</p>
+  <ListingForm categories={opts.categories} towns={opts.towns} values={values} allowSuggestions errors={errors} submitLabel="Submit for review" />
+</Base>

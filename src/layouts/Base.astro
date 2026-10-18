@@ -1,4 +1,5 @@
 ---
+import { Show, UserButton } from '@clerk/astro/components';
 import '../styles/global.css';
 
 interface Props {
@@ -36,6 +37,15 @@ const fullTitle = title === 'NewportHub' ? title : `${title} | NewportHub`;
             class="w-full max-w-xs rounded-md border border-slate-300 px-3 py-1.5 text-sm"
           />
         </form>
+        <nav class="flex shrink-0 items-center gap-3 text-sm">
+          <Show when="signed-in">
+            <a href="/account" class="font-medium text-sky-800 hover:underline">My listings</a>
+            <UserButton />
+          </Show>
+          <Show when="signed-out">
+            <a href="/login" class="font-medium text-sky-800 hover:underline">Business owners: sign in</a>
+          </Show>
+        </nav>
       </div>
     </header>
     <main class="mx-auto max-w-6xl px-4 py-8">

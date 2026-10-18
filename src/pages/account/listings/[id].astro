@@ -1,0 +1,45 @@
+---
+import Base from '../../../layouts/Base.astro';
+import ListingForm from '../../../components/ListingForm.astro';
+import { sessionUser } from '../../../lib/auth';
+import { parseListingForm, type ListingFormValues } from '../../../lib/listing-form';
+import { formOptions, getListing, openEdit, saveOwnerEdit } from '../../../lib/owner';
+
+const user = (await sessionUser(Astro))!;
+const listing = await getListing(Number(Astro.params.id));
+// Someone else's listing looks the same as a missing one.
+if (!listing || listing.ownerUserId !== user.id) return new Response(null, { status: 404 });
+
+const opts = await formOptions();
+const published = listing.status === 'published';
+const pending = published ? await openEdit(listing.id) : undefined;
+// Show the owner their unreviewed edit, not the live values, so they can keep working on it.
+let values: Partial<ListingFormValues> = { ...listing, ...(pending?.changes ?? {}) };
+let errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const parsed = parseListingForm(form, { ...opts, allowSuggestions: !published });
+  values = parsed.values;
+  errors = parsed.errors;
+  if (!errors.length) {
+    const { result, logoError } = await saveOwnerEdit(user, listing, parsed.values, form.get('logo'));
+    if (!logoError) return Astro.redirect(`/account?done=${result}`, 303);
+    errors = [`Your other changes were saved, but the logo was not: ${logoError}`];
+  }
+}
+const logoKey = pending?.changes.logoR2Key ?? listing.logoR2Key;
+---
+<Base title={`Edit ${listing.name}`} noindex>
+  <p class="mb-2 text-sm"><a href="/account" class="text-sky-700 hover:underline">← My listings</a></p>
+  <h1 class="mb-2 text-2xl font-bold">Edit {listing.name}</h1>
+  {published ? (
+    <p class="mb-6 text-slate-600">
+      Changes are reviewed before they go live. {pending && <strong>You have changes waiting for review; saving again replaces them.</strong>}
+      {' '}<a href={`/listing/${listing.slug}`} class="text-sky-700 hover:underline">View live listing</a>
+    </p>
+  ) : (
+    <p class="mb-6 text-slate-600">This listing is not live yet. Saving sends it for review again.</p>
+  )}
+  <ListingForm categories={opts.categories} towns={opts.towns} values={values} allowSuggestions={!published} logoKey={logoKey} errors={errors} submitLabel={published ? 'Submit changes for review' : 'Save'} />
+</Base>

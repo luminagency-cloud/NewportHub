@@ -1,0 +1,7 @@
+---
+import { SignIn } from '@clerk/astro/components';
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Sign in" noindex>
+  <div class="flex justify-center py-8"><SignIn routing="hash" signUpUrl="/signup" fallbackRedirectUrl="/account" /></div>
+</Base>

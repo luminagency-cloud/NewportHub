@@ -1,7 +1,7 @@
 ---
-import Base from '../../layouts/Base.astro';
-import { getPublishedListing } from '../../lib/queries';
-import { displayHours, toOpeningHoursSpec } from '../../lib/hours';
+import Base from '../../../layouts/Base.astro';
+import { getPublishedListing } from '../../../lib/queries';
+import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
 
 const row = await getPublishedListing(Astro.params.slug!);
 if (!row) return new Response(null, { status: 404 });
@@ -37,6 +37,7 @@ const mapUrl = l.lat != null && l.lng != null
   ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`
   : l.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.address)}` : undefined;
 const paid = l.tier !== 'free';
+const { userId } = Astro.locals.auth();
 ---
 <Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={l.description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`}>
   <script slot="head" type="application/ld+json" set:html={jsonLdText} />
@@ -80,4 +81,10 @@ const paid = l.tier !== 'free';
       </aside>
     </div>
   </article>
+
+  {l.ownerUserId && l.ownerUserId === userId ? (
+    <p class="mt-6 text-sm">You manage this listing. <a href={`/account/listings/${l.id}`} class="font-medium text-sky-700 hover:underline">Edit it</a></p>
+  ) : !l.ownerUserId && (
+    <p class="mt-6 text-sm text-slate-600">Is this your business? <a href={`/listing/${l.slug}/claim`} class="font-medium text-sky-700 hover:underline">Claim this listing</a> to keep its details up to date.</p>
+  )}
 </Base>

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /** Opening hours, keyed by English day name. An empty array means closed that day. */
 export type Hours = Partial<Record<Weekday, { open: string; close: string }[]>>;
@@ -8,6 +8,8 @@ export type Weekday = (typeof WEEKDAYS)[number];
 
 export const TIERS = ['free', 'featured', 'premium'] as const;
 export const STATUSES = ['pending', 'published', 'rejected'] as const;
+export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export const CLAIM_METHODS = ['email_domain', 'manual'] as const;
 
 const timestamps = {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
@@ -34,8 +36,12 @@ export const listings = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
-    categoryId: integer('category_id').notNull().references(() => categories.id),
-    townId: integer('town_id').notNull().references(() => towns.id),
+    // Null only on a pending owner submission that suggests a new category or town.
+    // Approval sets both; public queries inner-join, so null rows never show.
+    categoryId: integer('category_id').references(() => categories.id),
+    townId: integer('town_id').references(() => towns.id),
+    suggestedCategory: text('suggested_category'),
+    suggestedTown: text('suggested_town'),
     address: text('address'),
     phone: text('phone'),
     website: text('website'),
@@ -76,6 +82,58 @@ export const bannerAds = sqliteTable(
   (t) => [index('banner_ads_placement_idx').on(t.placement, t.active)],
 );
 
+/** Ownership claims on existing listings. An email-domain match is approved on creation. */
+export const claims = sqliteTable(
+  'claims',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    listingId: integer('listing_id').notNull().references(() => listings.id),
+    userId: text('user_id').notNull(),
+    userEmail: text('user_email').notNull(),
+    method: text('method', { enum: CLAIM_METHODS }).notNull(),
+    status: text('status', { enum: REVIEW_STATUSES }).notNull().default('pending'),
+    message: text('message'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('claims_status_idx').on(t.status),
+    uniqueIndex('claims_one_pending_per_user').on(t.listingId, t.userId).where(sql`status = 'pending'`),
+  ],
+);
+
+/** Fields an owner may change. Slug, tier, status, and ownership are not editable. */
+export type ListingChanges = Partial<
+  Pick<
+    typeof listings.$inferInsert,
+    'name' | 'categoryId' | 'townId' | 'address' | 'phone' | 'website' | 'email' | 'description' | 'hours' | 'logoR2Key'
+  >
+>;
+
+/** Owner edits to published listings, held for moderation. One open edit per listing. */
+export const pendingEdits = sqliteTable(
+  'pending_edits',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    listingId: integer('listing_id').notNull().references(() => listings.id),
+    userId: text('user_id').notNull(),
+    userEmail: text('user_email').notNull(),
+    changes: text('changes', { mode: 'json' }).$type<ListingChanges>().notNull(),
+    status: text('status', { enum: REVIEW_STATUSES }).notNull().default('pending'),
+    reviewNote: text('review_note'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('pending_edits_status_idx').on(t.status),
+    uniqueIndex('pending_edits_one_open_per_listing').on(t.listingId).where(sql`status = 'pending'`),
+  ],
+);
+
 export type Category = typeof categories.$inferSelect;
 export type Town = typeof towns.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
+export type Claim = typeof claims.$inferSelect;
+export type PendingEdit = typeof pendingEdits.$inferSelect;

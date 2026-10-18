@@ -12,6 +12,8 @@ Local business directory for Newport County, Rhode Island. Domain: newporthub.co
   - `MEDIA` — R2 bucket for logos and banner images, served by `src/pages/media/[...key].ts`.
   - `SESSION` — KV, added automatically by the adapter (Astro sessions). Unused so far; the
     adapter provisions it on first deploy.
+- **Clerk** (`@clerk/astro` v4) for auth. `src/middleware.ts` guards routes; Clerk's own UI at
+  `/login` and `/signup` (hash routing, so no catch-all routes).
 - **Tailwind CSS 4** via `@tailwindcss/vite` (`src/styles/global.css`).
 - **TypeScript 6, strict** (`astro/tsconfigs/strict` + `noUncheckedIndexedAccess`). Not TS 7:
   `astro check` refuses TS 7.0, and Astro's TS 7 path (`@astrojs/ts-content-mapper`) needs TS 7.1+.
@@ -27,8 +29,18 @@ src/lib/hours.ts          hours JSON → display rows and schema.org openingHour
 src/lib/slug.ts           slugify() and RESERVED_SLUGS
 src/pages/[slug]/index.astro   /[category]/ OR /[town]/ (category is checked first)
 src/pages/[slug]/[town].astro  /[category]/[town]/
-src/pages/listing/[slug].astro detail page + LocalBusiness JSON-LD
+src/pages/listing/[slug]/index.astro  detail page + LocalBusiness JSON-LD + claim/edit link
+src/pages/listing/[slug]/claim.astro  claim an unclaimed listing (signed in)
 src/pages/search.astro         ?q=&category=&town=&page=
+src/pages/account/             owner area: overview, new listing, edit own listing (signed in)
+src/pages/admin/index.astro    moderation queues (ADMIN_USER_IDS only)
+src/middleware.ts              Clerk; /account and /listing/*/claim need sign-in; /admin is 404 for non-admins
+src/lib/auth.ts                isAdmin(), sessionUser() (Clerk user + verified emails)
+src/lib/verify.ts              email-domain claim verification
+src/lib/owner.ts               owner writes: claims, submissions, edits
+src/lib/admin.ts               moderation: approve/reject listings, claims, edits
+src/lib/listing-form.ts        shared listing form validation + diffChanges()
+src/lib/media.ts               logo upload to R2 (magic-byte check, PNG/JPEG/WebP, 1 MB)
 scripts/seed-outscraper.ts     CSV import
 ```
 
@@ -50,7 +62,47 @@ scripts/seed-outscraper.ts     CSV import
 - **Schema changes:** edit `src/db/schema.ts` → `npm run db:generate` → review the SQL →
   `npm run db:migrate:local`. Hand-written SQL (triggers etc.): `npx drizzle-kit generate --custom --name <name>`.
 - Scripts run in Node and have their own `scripts/tsconfig.json`; app code must not import `node:*`.
-- Not built yet: auth, claiming, payments (Stripe columns exist but are unused), banner ad display.
+- **Tests:** `npm test` runs `src/lib/*.test.ts` with Node's test runner (pure functions only).
+- **D1 enforces foreign keys.** drizzle-kit's table-rebuild migrations emit `PRAGMA foreign_keys=OFF`,
+  which does not work on D1; replace it with `PRAGMA defer_foreign_keys = on` and check the
+  generated `INSERT … SELECT` (in 0002 it selected new columns from the old table). Test a rebuild
+  migration on a seeded local DB before applying it remotely.
+- Not built yet: payments (Stripe columns exist but are unused), banner ad display, email notifications.
+
+## Owners and moderation
+
+- **Claim** (`claims`): only published, unowned listings. If one of the user's *verified* Clerk
+  emails is at the listing website's domain (or a parent of it), the claim is approved on creation
+  and the user becomes owner. Free-mail domains and shared hosts (facebook.com, wixsite.com, …) never
+  match — lists in `src/lib/verify.ts`. Otherwise the claim waits for an admin. Approving one claim
+  rejects the other open claims on that listing. Ownership is set with a conditional update
+  (`owner_user_id IS NULL`), so two claims cannot both win.
+- **New listing:** `status = 'pending'`, owner = submitter. The submitter may suggest a new category
+  or town (`suggested_category`/`suggested_town`, with `category_id`/`town_id` null); the admin
+  maps it to an existing one or creates it on approval (slug-clash triggers still apply).
+- **Edits:** unpublished listings (own pending/rejected submissions) change directly and go back to
+  pending. Published listings never change from the owner form: the diff goes to `pending_edits`
+  (one open edit per listing; saving again replaces it) and is applied on admin approval.
+  Slug, tier, status, and ownership are never owner-editable.
+- **Logos:** a new R2 key per upload (`logos/<listingId>/<uuid>.<ext>`), so a pending logo never
+  replaces the live one. Replaced or rejected logo objects are deleted from R2.
+- **Admin:** `ADMIN_USER_IDS` (comma-separated Clerk user ids). Non-admins get 404 on `/admin`.
+
+## Environment
+
+| Variable | Where | Notes |
+|---|---|---|
+| `PUBLIC_CLERK_PUBLISHABLE_KEY` | `.dev.vars` locally; Worker var/secret in production | public |
+| `CLERK_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put CLERK_SECRET_KEY` | secret |
+| `ADMIN_USER_IDS` | `.dev.vars`; `npx wrangler secret put ADMIN_USER_IDS` | Clerk user ids |
+
+See `.dev.vars.example`. `.dev.vars` is gitignored. Run `npm run cf-typegen` after adding variables.
+
+**Testing auth locally:** Clerk sign-up shows a bot check (Cloudflare Turnstile) in headless
+browsers. Do not try to get past it. Create test users with the Clerk Backend API instead
+(`POST https://api.clerk.com/v1/users` with `email_address` and `skip_password_requirement` —
+emails created this way are verified) and sign in with a sign-in token
+(`POST /v1/sign_in_tokens`, then open `/login?__clerk_ticket=<token>`). Use a dev instance only.
 
 ## Commands
 
@@ -61,7 +113,8 @@ npm run seed:local                        # import data/sample-outscraper.csv
 npx tsx scripts/seed-outscraper.ts path/to/export.csv --local   # import a real Outscraper export
 
 npm run dev                               # astro dev, http://localhost:4321 (uses local D1/R2)
-npm run preview                           # astro build + wrangler dev, http://localhost:8787 (production-like)
+npm run preview                           # astro build + wrangler dev, http://127.0.0.1:8787 (production-like)
+npm test                                  # unit tests
 npm run check                             # astro check + typecheck scripts
 
 npx wrangler d1 execute DB --local --command "SELECT count(*) FROM listings"
@@ -72,6 +125,10 @@ Remote. The newporthub.com zone is on Cloudflare; `routes` in `wrangler.toml` at
 as a Custom Domain on deploy. First deploy: `npx wrangler d1 create newporthub` and put the id
 in `wrangler.toml`, `npx wrangler r2 bucket create newporthub-media`, then `npm run db:migrate:remote`,
 `npm run seed:remote`, and `npm run build && npx wrangler deploy`.
+
+`npm run preview` passes `--local-upstream 127.0.0.1:8787`: without it, wrangler dev rewrites the
+request host to the custom domain in `routes`, and Clerk redirects signed-in requests to the real
+newporthub.com.
 
 ## Seed import (Outscraper)
 

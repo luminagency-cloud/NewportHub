@@ -1,0 +1,58 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { sessionUser } from '../../../lib/auth';
+import { createClaim, getListingBySlug, hasPendingClaim } from '../../../lib/owner';
+import { matchingEmail, websiteHost } from '../../../lib/verify';
+
+const listing = await getListingBySlug(Astro.params.slug!);
+if (!listing || listing.status !== 'published') return new Response(null, { status: 404 });
+const user = (await sessionUser(Astro))!;
+
+let error: string | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const message = String(form.get('message') ?? '').trim().slice(0, 1000) || null;
+  const r = await createClaim(user, listing, message);
+  if ('result' in r) return Astro.redirect(`/account?done=claim-${r.result}`, 303);
+  error = r.error;
+}
+
+const host = websiteHost(listing.website);
+const instant = matchingEmail(user.verifiedEmails, listing.website);
+const alreadyPending = await hasPendingClaim(listing.id, user.id);
+const ownedByMe = listing.ownerUserId === user.id;
+---
+<Base title={`Claim ${listing.name}`} noindex>
+  <p class="mb-2 text-sm"><a href={`/listing/${listing.slug}`} class="text-sky-700 hover:underline">← {listing.name}</a></p>
+  <h1 class="mb-4 text-2xl font-bold">Claim {listing.name}</h1>
+  {error && <p class="mb-4 rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">{error}</p>}
+
+  {ownedByMe ? (
+    <p>You already manage this listing. <a href={`/account/listings/${listing.id}`} class="text-sky-700 hover:underline">Edit it</a>.</p>
+  ) : listing.ownerUserId ? (
+    <p>This listing already has an owner. If you think that is wrong, contact us.</p>
+  ) : alreadyPending ? (
+    <p>Your claim on this listing is waiting for review.</p>
+  ) : (
+    <div class="max-w-xl space-y-4">
+      {instant ? (
+        <p class="rounded-md border border-green-300 bg-green-50 p-4 text-sm text-green-900">
+          Your verified email <strong>{instant}</strong> matches the business website, so your claim is approved immediately.
+        </p>
+      ) : (
+        <p class="text-slate-700">
+          We review claims by hand.
+          {host && <> To be approved immediately instead, add and verify an email address at <strong>@{host}</strong> in your account settings, then come back.</>}
+        </p>
+      )}
+      <form method="post" class="space-y-4">
+        {!instant && (
+          <label class="block text-sm font-medium text-slate-700">How are you connected to this business? (optional)
+            <textarea name="message" rows="4" maxlength="1000" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2"></textarea>
+          </label>
+        )}
+        <button type="submit" class="rounded-md bg-sky-700 px-5 py-2 font-medium text-white hover:bg-sky-800">Claim this listing</button>
+      </form>
+    </div>
+  )}
+</Base>

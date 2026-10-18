@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
 import { WEEKDAYS, type Hours, type Weekday } from '../src/db/schema';
 import { RESERVED_SLUGS, slugify } from '../src/lib/slug';
+import { parseDay } from '../src/lib/hours-parse';
 
 const args = process.argv.slice(2);
 const target = args.includes('--remote') ? '--remote' : '--local';
@@ -46,51 +47,6 @@ function stateCode(raw: string | null): string | null {
   if (!raw) return null;
   if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();
   return US_STATES[raw.toLowerCase()] ?? null;
-}
-
-// ---- hours -----------------------------------------------------------------
-
-/** "9", "9:30", "9AM", "9:30 PM" -> minutes past midnight, plus the meridiem if given. */
-function parseClock(s: string): { mins: number; mer: 'AM' | 'PM' | null } | null {
-  const t = s.trim().toUpperCase().replace(/\./g, '');
-  if (t === 'NOON') return { mins: 12 * 60, mer: 'PM' };
-  if (t === 'MIDNIGHT') return { mins: 0, mer: 'AM' };
-  const m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2] ?? 0);
-  if (h > 23 || min > 59) return null;
-  return { mins: h * 60 + min, mer: (m[3] as 'AM' | 'PM' | undefined) ?? null };
-}
-
-function apply(c: { mins: number; mer: 'AM' | 'PM' | null }, mer: 'AM' | 'PM' | null): number {
-  const h = Math.floor(c.mins / 60) % 12;
-  const min = c.mins % 60;
-  if (!mer) return c.mins; // 24-hour clock
-  return (mer === 'PM' ? h + 12 : h) * 60 + min;
-}
-
-const hhmm = (mins: number) => `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
-
-/** One day's text, e.g. "11AM-2PM,5-9PM", "Closed", "Open 24 hours". Returns null when unreadable. */
-function parseDay(text: string): { open: string; close: string }[] | null {
-  const t = text.replace(/[  ]/g, ' ').trim();
-  if (/closed/i.test(t)) return [];
-  if (/24\s*hours/i.test(t)) return [{ open: '00:00', close: '23:59' }];
-  const ranges: { open: string; close: string }[] = [];
-  for (const part of t.split(/[,;]/)) {
-    const [a, b] = part.split(/\s*[-–—]\s*/);
-    if (!a || !b) return null;
-    const start = parseClock(a);
-    const end = parseClock(b);
-    if (!start || !end) return null;
-    const endMins = apply(end, end.mer);
-    let startMins = apply(start, start.mer ?? end.mer);
-    // "11-2PM" means 11 AM: a start borrowed from the end's meridiem cannot come after the end.
-    if (!start.mer && end.mer === 'PM' && startMins > endMins) startMins -= 12 * 60;
-    ranges.push({ open: hhmm(startMins), close: hhmm(endMins) });
-  }
-  return ranges;
 }
 
 /**

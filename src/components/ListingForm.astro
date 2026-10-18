@@ -1,0 +1,122 @@
+---
+import { WEEKDAYS, type Hours } from '../db/schema';
+import { formatDay } from '../lib/hours-parse';
+
+interface Props {
+  categories: { id: number; name: string }[];
+  towns: { id: number; name: string; state: string }[];
+  values?: {
+    name?: string | null;
+    categoryId?: number | null;
+    townId?: number | null;
+    suggestedCategory?: string | null;
+    suggestedTown?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    website?: string | null;
+    email?: string | null;
+    description?: string | null;
+    hours?: Hours | null;
+  };
+  /** Allow "Other (suggest new)" for category and town. New submissions only. */
+  allowSuggestions?: boolean;
+  logoKey?: string | null;
+  errors?: string[];
+  submitLabel: string;
+}
+const { categories, towns, values = {}, allowSuggestions = false, logoKey, errors = [], submitLabel } = Astro.props;
+const input = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
+const label = 'block text-sm font-medium text-slate-700';
+const catNew = allowSuggestions && !!values.suggestedCategory;
+const townNew = allowSuggestions && !!values.suggestedTown;
+---
+<form method="post" enctype="multipart/form-data" class="space-y-5">
+  {errors.length > 0 && (
+    <div class="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">
+      <p class="font-medium">Please fix the following:</p>
+      <ul class="mt-1 list-disc pl-5">{errors.map((e) => <li>{e}</li>)}</ul>
+    </div>
+  )}
+
+  <label class={label}>Business name *
+    <input name="name" required maxlength="120" value={values.name ?? ''} class={input} />
+  </label>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+    <div>
+      <label class={label}>Category *
+        <select name="categoryId" class={input} data-other="suggestedCategoryWrap">
+          <option value="">Choose…</option>
+          {categories.map((c) => <option value={c.id} selected={!catNew && c.id === values.categoryId}>{c.name}</option>)}
+          {allowSuggestions && <option value="new" selected={catNew}>Other (suggest a new category)</option>}
+        </select>
+      </label>
+      {allowSuggestions && (
+        <label id="suggestedCategoryWrap" class={`${label} mt-2`} hidden={!catNew}>New category name
+          <input name="suggestedCategory" maxlength="60" value={values.suggestedCategory ?? ''} class={input} />
+        </label>
+      )}
+    </div>
+    <div>
+      <label class={label}>Town *
+        <select name="townId" class={input} data-other="suggestedTownWrap">
+          <option value="">Choose…</option>
+          {towns.map((t) => <option value={t.id} selected={!townNew && t.id === values.townId}>{t.name}, {t.state}</option>)}
+          {allowSuggestions && <option value="new" selected={townNew}>Other (suggest a new town)</option>}
+        </select>
+      </label>
+      {allowSuggestions && (
+        <label id="suggestedTownWrap" class={`${label} mt-2`} hidden={!townNew}>New town name
+          <input name="suggestedTown" maxlength="60" value={values.suggestedTown ?? ''} class={input} />
+        </label>
+      )}
+    </div>
+  </div>
+
+  <label class={label}>Street address
+    <input name="address" maxlength="200" value={values.address ?? ''} class={input} />
+  </label>
+
+  <div class="grid gap-5 sm:grid-cols-3">
+    <label class={label}>Phone<input name="phone" type="tel" maxlength="40" value={values.phone ?? ''} class={input} /></label>
+    <label class={label}>Website<input name="website" type="text" inputmode="url" maxlength="300" placeholder="https://" value={values.website ?? ''} class={input} /></label>
+    <label class={label}>Public email<input name="email" type="email" maxlength="200" value={values.email ?? ''} class={input} /></label>
+  </div>
+
+  <label class={label}>Description
+    <textarea name="description" rows="5" maxlength="2000" class={input}>{values.description ?? ''}</textarea>
+  </label>
+
+  <fieldset>
+    <legend class={label}>Opening hours</legend>
+    <p class="text-xs text-slate-500">e.g. <code>9am-5pm</code>, <code>11-2pm, 5-9pm</code>, <code>Closed</code>, or <code>Open 24 hours</code>. Leave a day blank if unknown.</p>
+    <div class="mt-2 grid gap-2 sm:grid-cols-2">
+      {WEEKDAYS.map((d) => (
+        <label class="flex items-center gap-2 text-sm">
+          <span class="w-24 text-slate-600">{d}</span>
+          <input name={`hours_${d}`} value={formatDay(values.hours?.[d])} class="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1" />
+        </label>
+      ))}
+    </div>
+  </fieldset>
+
+  <div>
+    <label class={label}>Logo (PNG, JPEG, or WebP, up to 1 MB)
+      <input name="logo" type="file" accept="image/png,image/jpeg,image/webp" class="mt-1 block text-sm" />
+    </label>
+    {logoKey && <img src={`/media/${logoKey}`} alt="Current logo" width="64" height="64" class="mt-2 h-16 w-16 rounded border object-contain" />}
+  </div>
+
+  <slot name="note" />
+  <button type="submit" class="rounded-md bg-sky-700 px-5 py-2 font-medium text-white hover:bg-sky-800">{submitLabel}</button>
+</form>
+
+<script>
+  // Show the "suggest new" text field only when "Other" is selected.
+  // instanceof, not a cast: the Workers types in worker-configuration.d.ts redefine the global Element.
+  document.querySelectorAll('select[data-other]').forEach((select) => {
+    if (!(select instanceof HTMLSelectElement)) return;
+    const wrap = document.getElementById(select.dataset.other ?? '');
+    if (wrap) select.addEventListener('change', () => (wrap.hidden = select.value !== 'new'));
+  });
+</script>
