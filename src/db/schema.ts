@@ -57,6 +57,10 @@ export const listings = sqliteTable(
     claimedAt: integer('claimed_at', { mode: 'timestamp' }),
     stripeCustomerId: text('stripe_customer_id'),
     stripeSubscriptionId: text('stripe_subscription_id'),
+    /** Stripe subscription status as of the last webhook (active, past_due, canceled, …). */
+    subscriptionStatus: text('subscription_status'),
+    currentPeriodEnd: integer('current_period_end', { mode: 'timestamp' }),
+    cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull().default(false),
     /** Google place id from the import source. Lets the seed script re-run without duplicates. */
     sourcePlaceId: text('source_place_id').unique(),
     ...timestamps,
@@ -65,6 +69,8 @@ export const listings = sqliteTable(
     index('listings_status_tier_idx').on(t.status, t.tier),
     index('listings_category_idx').on(t.categoryId),
     index('listings_town_idx').on(t.townId),
+    index('listings_stripe_subscription_idx').on(t.stripeSubscriptionId),
+    index('listings_stripe_customer_idx').on(t.stripeCustomerId),
   ],
 );
 

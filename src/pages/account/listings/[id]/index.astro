@@ -1,9 +1,9 @@
 ---
-import Base from '../../../layouts/Base.astro';
-import ListingForm from '../../../components/ListingForm.astro';
-import { sessionUser } from '../../../lib/auth';
-import { parseListingForm, type ListingFormValues } from '../../../lib/listing-form';
-import { formOptions, getListing, openEdit, saveOwnerEdit } from '../../../lib/owner';
+import Base from '../../../../layouts/Base.astro';
+import ListingForm from '../../../../components/ListingForm.astro';
+import { sessionUser } from '../../../../lib/auth';
+import { parseListingForm, type ListingFormValues } from '../../../../lib/listing-form';
+import { formOptions, getListing, openEdit, saveOwnerEdit } from '../../../../lib/owner';
 
 const user = (await sessionUser(Astro))!;
 const listing = await getListing(Number(Astro.params.id));

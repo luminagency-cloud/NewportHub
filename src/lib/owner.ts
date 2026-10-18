@@ -19,7 +19,12 @@ export async function getListingBySlug(slug: string): Promise<Listing | undefine
 export async function accountOverview(userId: string) {
   const [owned, myClaims, edits] = await Promise.all([
     db()
-      .select({ id: listings.id, slug: listings.slug, name: listings.name, status: listings.status, tier: listings.tier })
+      .select({
+        id: listings.id, slug: listings.slug, name: listings.name, status: listings.status, tier: listings.tier,
+        stripeCustomerId: listings.stripeCustomerId, stripeSubscriptionId: listings.stripeSubscriptionId,
+        subscriptionStatus: listings.subscriptionStatus, currentPeriodEnd: listings.currentPeriodEnd,
+        cancelAtPeriodEnd: listings.cancelAtPeriodEnd,
+      })
       .from(listings)
       .where(eq(listings.ownerUserId, userId))
       .orderBy(listings.name),

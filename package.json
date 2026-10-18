@@ -1,6 +1,6 @@
 {
   "name": "newporthub",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -20,6 +20,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.4.0",
     "drizzle-orm": "^0.45.4",
+    "stripe": "^23.0.0",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {

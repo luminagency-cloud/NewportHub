@@ -42,6 +42,11 @@ src/lib/owner.ts               owner writes: claims, submissions, edits
 src/lib/admin.ts               moderation: approve/reject listings, claims, edits
 src/lib/listing-form.ts        shared listing form validation + diffChanges()
 src/lib/media.ts               logo upload to R2 (magic-byte check, PNG/JPEG/WebP, 1 MB)
+src/lib/billing.ts             Stripe: checkout, portal, webhook verify + handlers, syncSubscription()
+src/lib/billing-tier.ts        pure subscription → tier rules (unit-tested)
+src/pages/api/stripe/webhook.ts  Stripe webhook (signature-verified)
+src/pages/account/listings/[id]/upgrade.ts  POST → Stripe Checkout (subscription mode)
+src/pages/account/billing/index.ts          POST → Stripe customer portal
 scripts/seed-outscraper.ts     CSV import
 ```
 
@@ -72,7 +77,7 @@ scripts/seed-outscraper.ts     CSV import
   which does not work on D1; replace it with `PRAGMA defer_foreign_keys = on` and check the
   generated `INSERT … SELECT` (in 0002 it selected new columns from the old table). Test a rebuild
   migration on a seeded local DB before applying it remotely.
-- Not built yet: payments (Stripe columns exist but are unused), banner ad display, email notifications.
+- Not built yet: banner ad display, email notifications.
 
 ## Owners and moderation
 
@@ -93,6 +98,56 @@ scripts/seed-outscraper.ts     CSV import
   replaces the live one. Replaced or rejected logo objects are deleted from R2.
 - **Admin:** `ADMIN_USER_IDS` (comma-separated Clerk user ids). Non-admins get 404 on `/admin`.
 
+## Billing (Stripe)
+
+- Tiers `featured` and `premium` are Stripe subscriptions, one per listing. Prices are never in
+  code: `STRIPE_PRICE_FEATURED` / `STRIPE_PRICE_PREMIUM` hold a price id (`price_…`) or a product
+  id (`prod_…`, which uses that product's default price). A tier with no id is not offered.
+- **Upgrade** (owner dashboard, published listings only) → Checkout in subscription mode.
+  `metadata` and `subscription_data.metadata` carry `listing_id`, so every later subscription event
+  names its listing. A listing that already has a live subscription goes to the portal instead.
+  One Stripe customer per owner (reused across their listings), so one portal shows all plans.
+- **Webhook** `/api/stripe/webhook` verifies the signature on the raw body. Handled:
+  `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`,
+  `invoice.payment_failed`. Every handler re-reads the subscription from Stripe and derives the tier
+  (`tierForSubscription`): `active`/`trialing` on a configured price → that tier, anything else →
+  `free`. So late, duplicate, or out-of-order events still end correct. `invoice.payment_failed`
+  downgrades at once; a successful retry restores the tier through `customer.subscription.updated`.
+- **Never delete or unpublish a listing for billing reasons.** Billing only changes `tier` and the
+  `stripe_*` / `subscription_status` / `current_period_end` / `cancel_at_period_end` columns.
+- Response codes: 400 bad signature, 500 handler error (Stripe retries), 200 applied or ignored,
+  503 billing not configured.
+- **Stripe dashboard setup (production):** products/prices for Featured and Premium (recurring);
+  Customer portal enabled (Settings → Billing → Customer portal), allowing cancel and switching
+  between the two plans; a webhook endpoint `https://newporthub.com/api/stripe/webhook` with the
+  four events above — its signing secret is `STRIPE_WEBHOOK_SECRET`. Use the same API version as the
+  SDK (`stripe` v23 → `2026-09-30.endive`); the code reads invoice → subscription from
+  `invoice.parent.subscription_details` and period end from subscription items.
+
+### Testing billing locally with the Stripe CLI
+
+Not yet run end to end against real Stripe test mode; the steps follow the Stripe CLI docs.
+
+1. Test-mode keys in `.dev.vars`: `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_PRICE_FEATURED`,
+   `STRIPE_PRICE_PREMIUM` (test-mode price or product ids). Leave `STRIPE_API_BASE` unset.
+2. `stripe login`, then `stripe listen --forward-to http://127.0.0.1:8787/api/stripe/webhook`.
+   It prints a `whsec_…` secret: put it in `.dev.vars` as `STRIPE_WEBHOOK_SECRET`.
+3. In another terminal: `npm run preview` (rebuilds and serves http://127.0.0.1:8787).
+4. Sign in as the owner of a published listing → My listings → Upgrade. Pay with card
+   `4242 4242 4242 4242`, any future expiry, any CVC. The `stripe listen` window should show
+   `checkout.session.completed` → `[200]`, and the dashboard shows the new plan.
+5. Manage billing → switch plan or cancel → `customer.subscription.updated` / `.deleted` → tier
+   follows. Immediate cancel from the CLI: `stripe subscriptions cancel sub_…`.
+6. Failed payment: in the portal set card `4000 0000 0000 0341` (attaches, then every charge fails)
+   and let the next invoice be charged (a Stripe test clock advances time) → `invoice.payment_failed`
+   → listing drops to free, dashboard says "Payment failed".
+7. `stripe trigger <event>` makes its own unrelated objects: expect `200 … no listing found` in the
+   logs. Useful to check plumbing, not tier changes.
+
+Without a Stripe account, `STRIPE_API_BASE=http://127.0.0.1:12111` (honoured only with an
+`sk_test_` key) points the SDK at a local mock API, and events can be signed by hand:
+`Stripe-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>" keyed with STRIPE_WEBHOOK_SECRET>`.
+
 ## Environment
 
 | Variable | Where | Notes |
@@ -100,6 +155,10 @@ scripts/seed-outscraper.ts     CSV import
 | `PUBLIC_CLERK_PUBLISHABLE_KEY` | `.dev.vars` locally; Worker var/secret in production | public |
 | `CLERK_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put CLERK_SECRET_KEY` | secret |
 | `ADMIN_USER_IDS` | `.dev.vars`; `npx wrangler secret put ADMIN_USER_IDS` | Clerk user ids |
+| `STRIPE_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put STRIPE_SECRET_KEY` | secret; `sk_test_…` locally |
+| `STRIPE_WEBHOOK_SECRET` | `.dev.vars` (from `stripe listen`); secret in production (from the dashboard endpoint) | secret |
+| `STRIPE_PRICE_FEATURED`, `STRIPE_PRICE_PREMIUM` | `.dev.vars`; Worker var or secret | `price_…` or `prod_…` |
+| `STRIPE_API_BASE` | `.dev.vars` only | test-only mock API base; ignored for live keys |
 
 The names are Astro's: `PUBLIC_CLERK_PUBLISHABLE_KEY`, not the `NEXT_PUBLIC_…` name the Clerk
 dashboard shows for Next.js (a key under that name is ignored). See `.dev.vars.example`. `.dev.vars` is gitignored. Run `npm run cf-typegen` after adding variables.
