@@ -47,6 +47,10 @@ scripts/seed-outscraper.ts     CSV import
 
 ## Conventions
 
+- **Every commit bumps the version** in `package.json` (at least a patch:
+  `npm version patch --no-git-tag-version`, which also updates `package-lock.json`). Minor for new
+  features, major for breaking changes. Include the bump in the same commit as the change.
+
 - **Bindings:** `import { env } from 'cloudflare:workers'`. `Astro.locals.runtime.env` no longer
   exists (removed in Astro 6). Run `npm run cf-typegen` after editing `wrangler.toml`.
 - **Category and town slugs share one URL level.** A slug must not exist in both tables, and must
