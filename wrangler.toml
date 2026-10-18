@@ -5,6 +5,10 @@ compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 main = "@astrojs/cloudflare/entrypoints/server"
 
+# Workers Custom Domain: `wrangler deploy` creates the DNS record and certificate for this
+# hostname in the newporthub.com zone. Do not add A/CNAME records for it by hand.
+routes = [{ pattern = "newporthub.com", custom_domain = true }]
+
 [assets]
 directory = "./dist/client"
 binding = "ASSETS"

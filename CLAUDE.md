@@ -13,7 +13,8 @@ Local business directory for Newport County, Rhode Island. Domain: newporthub.co
   - `SESSION` — KV, added automatically by the adapter (Astro sessions). Unused so far; the
     adapter provisions it on first deploy.
 - **Tailwind CSS 4** via `@tailwindcss/vite` (`src/styles/global.css`).
-- **TypeScript strict** (`astro/tsconfigs/strict` + `noUncheckedIndexedAccess`).
+- **TypeScript 6, strict** (`astro/tsconfigs/strict` + `noUncheckedIndexedAccess`). Not TS 7:
+  `astro check` refuses TS 7.0, and Astro's TS 7 path (`@astrojs/ts-content-mapper`) needs TS 7.1+.
 
 ## Layout
 
@@ -67,7 +68,8 @@ npx wrangler d1 execute DB --local --command "SELECT count(*) FROM listings"
 npx wrangler r2 object put newporthub-media/logos/x.png --local --file ./x.png
 ```
 
-Remote (once the Cloudflare account is set up): `npx wrangler d1 create newporthub` and put the id
+Remote. The newporthub.com zone is on Cloudflare; `routes` in `wrangler.toml` attaches the Worker
+as a Custom Domain on deploy. First deploy: `npx wrangler d1 create newporthub` and put the id
 in `wrangler.toml`, `npx wrangler r2 bucket create newporthub-media`, then `npm run db:migrate:remote`,
 `npm run seed:remote`, and `npm run build && npx wrangler deploy`.
 
