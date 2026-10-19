@@ -295,8 +295,9 @@ unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running
 fields **only on unclaimed listings**, so owner edits survive, and never touches tier, status, owner,
 or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing
 name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
-on `category`, then each `subtypes` entry; no hit → row not imported, source category saved to
-`import_unmapped`. **Hours are not imported** (Basic has no hours). Columns read: `name,
+on `category`, then each `subtypes` entry; a hit on a parent narrows to a later subtype that maps to
+one of its subcategories; no hit → row not imported, source category saved to
+`import_unmapped`. **Hours are not imported** (Basic has no hours). CSV only (export CSV from Outscraper, not XLSX). Columns read: `name,
 place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
 email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.
 

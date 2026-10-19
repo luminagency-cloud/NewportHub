@@ -24,6 +24,14 @@ test('maps the first known name, else reports the main category', () => {
   assert.deepEqual(mapSourceCategory([null, undefined], aliases), { unmapped: null });
 });
 
+test('narrows a parent hit to a later subtype of the same parent', () => {
+  const aliases = new Map([['restaurant', 1], ['breakfast restaurant', 2], ['bar', 10], ['seafood restaurant', 3]]);
+  const parentOf = new Map<number, number | null>([[1, null], [2, 1], [3, 1], [10, null]]);
+  assert.deepEqual(mapSourceCategory(['Restaurant', 'Breakfast restaurant'], aliases, parentOf), { categoryId: 2 });
+  assert.deepEqual(mapSourceCategory(['Bar', 'Restaurant', 'Seafood restaurant'], aliases, parentOf), { categoryId: 10 });
+  assert.deepEqual(mapSourceCategory(['Seafood restaurant', 'Breakfast restaurant'], aliases, parentOf), { categoryId: 3 });
+});
+
 test('links go to the subcategory only when it has broken out', () => {
   const sub = { slug: 'sushi-restaurants', name: 'Sushi Restaurants', parentSlug: 'restaurants', parentName: 'Restaurants' };
   assert.deepEqual(categoryLink({ ...sub, brokenOut: false }), { slug: 'restaurants', name: 'Restaurants' });

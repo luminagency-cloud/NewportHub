@@ -29,7 +29,7 @@ export const SERVICE_STATE = 'RI';
 export const TAXONOMY: TaxonomyParent[] = [
   {
     name: 'Restaurants',
-    aliases: ['restaurant', 'family restaurant', 'fine dining restaurant', 'bistro', 'brasserie', 'diner', 'food court', 'takeout restaurant', 'delivery restaurant', 'new american restaurant', 'modern european restaurant', 'european restaurant'],
+    aliases: ['restaurant', 'family restaurant', 'fine dining restaurant', 'bistro', 'brasserie', 'diner', 'food court', 'takeout restaurant', 'delivery restaurant', 'new american restaurant', 'modern european restaurant', 'european restaurant', 'vegan restaurant', 'vegetarian restaurant', 'health food restaurant', 'fusion restaurant', 'lunch restaurant', 'new england restaurant'],
     search: ['restaurant', 'seafood restaurant', 'pizza restaurant', 'italian restaurant', 'mexican restaurant', 'sushi restaurant', 'chinese restaurant', 'thai restaurant', 'indian restaurant', 'american restaurant', 'breakfast restaurant', 'sandwich shop', 'food truck'],
     subs: [
       { name: 'Seafood Restaurants', aliases: ['seafood restaurant', 'oyster bar restaurant', 'lobster restaurant', 'fish and chips restaurant', 'raw bar'] },
@@ -54,7 +54,7 @@ export const TAXONOMY: TaxonomyParent[] = [
     subs: [
       { name: 'Coffee Shops', aliases: ['coffee shop', 'cafe', 'espresso bar', 'coffee roasters', 'tea house'] },
       { name: 'Bakeries', aliases: ['bakery', 'pastry shop', 'cake shop', 'cupcake shop', 'bagel bakery'] },
-      { name: 'Ice Cream & Desserts', aliases: ['ice cream shop', 'frozen yogurt shop', 'dessert shop', 'gelato shop', 'chocolate shop', 'candy store'] },
+      { name: 'Ice Cream & Desserts', aliases: ['ice cream shop', 'frozen yogurt shop', 'dessert shop', 'gelato shop', 'chocolate shop', 'candy store', 'confectionery store'] },
       { name: 'Donut Shops', aliases: ['donut shop'] },
       { name: 'Juice & Smoothie Bars', aliases: ['juice shop', 'smoothie shop', 'acai shop'] },
     ],
@@ -79,7 +79,7 @@ export const TAXONOMY: TaxonomyParent[] = [
       { name: 'Hotels & Resorts', aliases: ['hotel', 'resort hotel', 'boutique hotel', 'extended stay hotel'] },
       { name: 'Inns & Bed and Breakfasts', aliases: ['inn', 'bed and breakfast', 'guest house'] },
       { name: 'Motels', aliases: ['motel'] },
-      { name: 'Vacation Rentals', aliases: ['vacation home rental agency', 'vacation rental', 'cottage rental', 'holiday apartment rental'] },
+      { name: 'Vacation Rentals', aliases: ['vacation home rental agency', 'vacation rental', 'cottage rental', 'holiday apartment rental', 'short term apartment rental agency'] },
       { name: 'Campgrounds & RV Parks', aliases: ['campground', 'rv park'] },
     ],
   },
@@ -116,7 +116,7 @@ export const TAXONOMY: TaxonomyParent[] = [
       { name: 'Wedding & Event Venues', aliases: ['wedding venue', 'event venue', 'banquet hall', 'function room facility'] },
       { name: 'Caterers', aliases: ['caterer', 'catering food and drink supplier'] },
       { name: 'Photographers & Videographers', aliases: ['wedding photographer', 'photographer', 'videographer', 'photography studio'] },
-      { name: 'Florists', aliases: ['florist', 'flower designer'] },
+      { name: 'Florists', aliases: ['florist', 'flower designer', 'flower market'] },
       { name: 'Event Planners & Rentals', aliases: ['event planner', 'wedding planner', 'party equipment rental service', 'tent rental service', 'bridal shop'] },
       { name: 'DJs & Entertainers', aliases: ['dj service', 'band', 'musician', 'entertainer'] },
     ],
@@ -127,7 +127,7 @@ export const TAXONOMY: TaxonomyParent[] = [
     search: ['clothing store', 'gift shop', 'jewelry store', 'boutique', 'book store', 'furniture store', 'antique store', 'hardware store', 'sporting goods store'],
     subs: [
       { name: 'Clothing & Boutiques', aliases: ['clothing store', 'boutique', "women's clothing store", "men's clothing store", "children's clothing store", 'shoe store', 'swimwear store', 'thrift store', 'consignment shop'] },
-      { name: 'Gifts & Souvenirs', aliases: ['gift shop', 'souvenir store', 'novelty store', 'card shop', 'toy store'] },
+      { name: 'Gifts & Souvenirs', aliases: ['gift shop', 'souvenir store', 'novelty store', 'card shop', 'toy store', 'greeting card shop'] },
       { name: 'Jewelry', aliases: ['jewelry store', 'jeweler', 'jewelry designer'] },
       { name: 'Books & Music', aliases: ['book store', 'used book store', 'record store', 'music store'] },
       { name: 'Home & Furniture', aliases: ['furniture store', 'home goods store', 'interior designer', 'lighting store', 'mattress store', 'kitchen supply store'] },
@@ -141,11 +141,11 @@ export const TAXONOMY: TaxonomyParent[] = [
     aliases: ['food store'],
     search: ['grocery store', 'seafood market', 'liquor store', 'wine store', 'butcher shop', 'farmers market', 'specialty food store'],
     subs: [
-      { name: 'Grocery Stores', aliases: ['grocery store', 'supermarket', 'convenience store', 'natural foods store', 'health food store'] },
+      { name: 'Grocery Stores', aliases: ['grocery store', 'supermarket', 'convenience store', 'natural foods store', 'health food store', 'general store'] },
       { name: 'Seafood Markets', aliases: ['seafood market', 'fish store', 'lobster pound'] },
       { name: 'Wine & Spirits', aliases: ['liquor store', 'wine store', 'beer store'] },
-      { name: 'Butchers & Specialty Foods', aliases: ['butcher shop', 'specialty food store', 'cheese shop', 'gourmet grocery store', 'olive oil store', 'spice store'] },
-      { name: 'Farms & Farmers Markets', aliases: ['farmers market', "farmers' market", 'farm', 'farm stand', 'produce market', 'orchard'] },
+      { name: 'Butchers & Specialty Foods', aliases: ['butcher shop', 'specialty food store', 'cheese shop', 'gourmet grocery store', 'olive oil store', 'spice store', 'food manufacturer', 'food producer'] },
+      { name: 'Farms & Farmers Markets', aliases: ['farmers market', "farmers' market", 'farm', 'farm stand', 'produce market', 'orchard', 'farm shop'] },
     ],
   },
   {
@@ -216,6 +216,7 @@ export const TAXONOMY: TaxonomyParent[] = [
       { name: 'Tires', aliases: ['tire shop', 'wheel alignment service'] },
       { name: 'Car Washes', aliases: ['car wash'] },
       { name: 'Gas Stations', aliases: ['gas station', 'ev charging station'] },
+      { name: 'Auto Parts', aliases: ['auto parts store', 'racing car parts store', 'motorcycle parts store'] },
       { name: 'Towing', aliases: ['towing service', 'roadside assistance service'] },
       { name: 'Car Rentals & Taxis', aliases: ['car rental agency', 'taxi service', 'limousine service', 'airport shuttle service', 'transportation service'] },
     ],

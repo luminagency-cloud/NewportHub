@@ -79,6 +79,9 @@ if (!aliasRows.length) {
   process.exit(1);
 }
 const aliases = new Map(aliasRows.map((r) => [r.alias, r.category_id]));
+const parentOf = new Map(
+  d1Query<{ id: number; parent_id: number | null }>('SELECT id, parent_id FROM categories').map((r) => [r.id, r.parent_id]),
+);
 const existingListings = d1Query<{ slug: string; source_place_id: string | null }>('SELECT slug, source_place_id FROM listings');
 const slugByPlace = new Map(existingListings.filter((r) => r.source_place_id).map((r) => [r.source_place_id!, r.slug]));
 const takenSlugs = new Set(existingListings.map((r) => r.slug));
@@ -104,7 +107,7 @@ for (const [i, row] of rows.entries()) {
   const town = state === SERVICE_STATE ? serviceTown.get(city.toLowerCase()) : undefined;
   if (!town) { skip(`outside the service towns (${city}, ${state})`, label); continue; }
 
-  const mapped = mapSourceCategory([val(row, 'category', 'type'), ...(val(row, 'subtypes')?.split(',') ?? [])], aliases);
+  const mapped = mapSourceCategory([val(row, 'category', 'type'), ...(val(row, 'subtypes')?.split(',') ?? [])], aliases, parentOf);
   if (!('categoryId' in mapped)) {
     const key = mapped.unmapped ?? '(no category)';
     const u = unmapped.get(key) ?? { rows: 0, example: name };
