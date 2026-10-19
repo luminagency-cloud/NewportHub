@@ -27,10 +27,12 @@ interface Props {
 const { categories, towns, values = {}, allowSuggestions = false, logoKey, errors = [], submitLabel } = Astro.props;
 const input = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
 const label = 'block text-sm font-medium text-slate-700';
+const optional = 'font-normal text-slate-500';
 const catNew = allowSuggestions && !!values.suggestedCategory;
 const townNew = allowSuggestions && !!values.suggestedTown;
 ---
 <form method="post" enctype="multipart/form-data" class="space-y-5">
+  <p class="text-sm text-slate-500">Fields marked * are required. Everything else is optional.</p>
   {errors.length > 0 && (
     <div class="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">
       <p class="font-medium">Please fix the following:</p>
@@ -73,22 +75,22 @@ const townNew = allowSuggestions && !!values.suggestedTown;
     </div>
   </div>
 
-  <label class={label}>Street address
+  <label class={label}>Street address <span class={optional}>(optional)</span>
     <input name="address" maxlength="200" value={values.address ?? ''} class={input} />
   </label>
 
   <div class="grid gap-5 sm:grid-cols-3">
-    <label class={label}>Phone<input name="phone" type="tel" maxlength="40" value={values.phone ?? ''} class={input} /></label>
-    <label class={label}>Website<input name="website" type="text" inputmode="url" maxlength="300" placeholder="https://" value={values.website ?? ''} class={input} /></label>
-    <label class={label}>Public email<input name="email" type="email" maxlength="200" value={values.email ?? ''} class={input} /></label>
+    <label class={label}>Phone <span class={optional}>(optional)</span><input name="phone" type="tel" maxlength="40" value={values.phone ?? ''} class={input} /></label>
+    <label class={label}>Website <span class={optional}>(optional)</span><input name="website" type="text" inputmode="url" maxlength="300" placeholder="https://" value={values.website ?? ''} class={input} /></label>
+    <label class={label}>Public email <span class={optional}>(optional)</span><input name="email" type="email" maxlength="200" value={values.email ?? ''} class={input} /></label>
   </div>
 
-  <label class={label}>Description
+  <label class={label}>Description <span class={optional}>(optional)</span>
     <textarea name="description" rows="5" maxlength="2000" class={input}>{values.description ?? ''}</textarea>
   </label>
 
   <fieldset>
-    <legend class={label}>Opening hours</legend>
+    <legend class={label}>Opening hours <span class={optional}>(optional)</span></legend>
     <p class="text-xs text-slate-500">e.g. <code>9am-5pm</code>, <code>11-2pm, 5-9pm</code>, <code>Closed</code>, or <code>Open 24 hours</code>. Leave a day blank if unknown.</p>
     <div class="mt-2 grid gap-2 sm:grid-cols-2">
       {WEEKDAYS.map((d) => (
@@ -101,7 +103,7 @@ const townNew = allowSuggestions && !!values.suggestedTown;
   </fieldset>
 
   <div>
-    <label class={label}>Logo (PNG, JPEG, or WebP, up to 1 MB)
+    <label class={label}>Logo <span class={optional}>(optional; PNG, JPEG, or WebP, up to 1 MB)</span>
       <input name="logo" type="file" accept="image/png,image/jpeg,image/webp" class="mt-1 block text-sm" />
     </label>
     {logoKey && <img src={`/media/${logoKey}`} alt="Current logo" width="64" height="64" class="mt-2 h-16 w-16 rounded border object-contain" />}
