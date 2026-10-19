@@ -1,6 +1,6 @@
 {
   "name": "newporthub",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -17,7 +17,7 @@
     "outscraper:queries": "tsx scripts/outscraper-queries.ts",
     "import:local": "tsx scripts/seed-outscraper.ts --local",
     "import:remote": "tsx scripts/seed-outscraper.ts --remote",
-    "deploy": "git pull --ff-only && npm ci && tsx scripts/deploy.ts"
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.4.0",

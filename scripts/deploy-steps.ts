@@ -2,7 +2,7 @@
  * Deploy to production in one go: checks, tests, remote migrations, category seed, build, deploy,
  * smoke test. Stops at the first failure, before anything remote changes if checks or tests fail.
  *
- *   npm run deploy        (package.json pulls and runs npm ci first)
+ *   npm run deploy        (scripts/deploy.mjs pulls and runs npm ci first)
  */
 import { execFileSync } from 'node:child_process';
 import { wrangler } from './wrangler';

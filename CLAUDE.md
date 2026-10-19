@@ -68,7 +68,7 @@ src/pages/sitemap.xml.ts       sitemap (only pages with published listings)
 src/pages/robots.txt.ts        robots.txt
 public/og-default.png          1200×630 default social card (regenerate with PIL if the brand changes)
 scripts/seed-outscraper.ts     Outscraper import (.xlsx or .csv)
-scripts/deploy.ts              production deploy (npm run deploy)
+scripts/deploy.mjs             production deploy (npm run deploy): pull, npm ci, then deploy-steps.ts
 scripts/wrangler.ts            runs wrangler through Node (works on Windows)
 scripts/seed-categories.ts     writes src/data/taxonomy.ts to D1 (adds only)
 scripts/outscraper-queries.ts  prints Outscraper queries (search terms × service towns)
@@ -269,10 +269,10 @@ Production is the Worker `newporthub` with Custom Domain newporthub.com (`routes
 `npx wrangler login` done:
 
 ```sh
-npm run deploy      # git pull, npm ci, then scripts/deploy.ts
+npm run deploy      # scripts/deploy.mjs: git pull, npm ci, then scripts/deploy-steps.ts
 ```
 
-`scripts/deploy.ts` stops at the first failing step: Cloudflare login check → `npm run check` →
+`scripts/deploy-steps.ts` stops at the first failing step: Cloudflare login check → `npm run check` →
 `npm test` → remote migrations → remote category seed (add-only) → build → `wrangler deploy` →
 smoke test (`/`, `/sitemap.xml`, `/robots.txt` must return 200). Checks and tests run before
 anything remote changes. Stop `npm run dev`/`preview` first: on Windows `npm ci` cannot replace
