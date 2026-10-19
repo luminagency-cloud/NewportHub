@@ -8,7 +8,8 @@
  * listings are left alone so owner edits survive. Tier, status, owner, and Stripe fields are never
  * touched.
  *
- * Categories come from the alias table (seed it first: npm run seed:categories:local). Rows whose
+ * Categories come from the alias table (seed it first: npm run seed:categories:local); a subcategory
+ * hit files the listing on its parent. Rows whose
  * category has no alias are not imported; their source categories are saved to import_unmapped for
  * review. Only the service towns in src/data/taxonomy.ts are imported. Hours are not imported
  * (Basic listings have no hours; Linear LA-190).
@@ -107,7 +108,7 @@ for (const [i, row] of rows.entries()) {
   const town = state === SERVICE_STATE ? serviceTown.get(city.toLowerCase()) : undefined;
   if (!town) { skip(`outside the service towns (${city}, ${state})`, label); continue; }
 
-  const mapped = mapSourceCategory([val(row, 'category', 'type'), ...(val(row, 'subtypes')?.split(',') ?? [])], aliases, parentOf);
+  const mapped = mapSourceCategory([val(row, 'category', 'type'), ...(val(row, 'subtypes')?.split(',') ?? [])], aliases);
   if (!('categoryId' in mapped)) {
     const key = mapped.unmapped ?? '(no category)';
     const u = unmapped.get(key) ?? { rows: 0, example: name };
@@ -115,6 +116,9 @@ for (const [i, row] of rows.entries()) {
     unmapped.set(key, u);
     continue;
   }
+
+  // Imports file on the parent only; a subcategory is the owner's choice (paid plans, Linear LA-190).
+  const categoryId = parentOf.get(mapped.categoryId) ?? mapped.categoryId;
 
   let slug = placeId ? slugByPlace.get(placeId) : undefined;
   if (!slug) {
@@ -130,7 +134,7 @@ for (const [i, row] of rows.entries()) {
   const fields = {
     slug: q(slug),
     name: q(name),
-    category_id: String(mapped.categoryId),
+    category_id: String(categoryId),
     town_id: `(SELECT id FROM towns WHERE slug = ${q(slugify(town))})`,
     address: q(val(row, 'full_address', 'address')),
     phone: q(val(row, 'phone', 'phone_1')),

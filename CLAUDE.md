@@ -112,6 +112,11 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   listing** (admin approvals do; the import runs the same SQL). Forgetting it leaves pages stale.
 - Slugs are flat and share one namespace with towns (slug-clash triggers). Nested URLs would clash
   with `/category/town/`.
+- **Imports file on the parent only** (a subcategory alias hit files on its parent); choosing a
+  subcategory is up to the owner (a paid-plan feature, LA-190).
+- **The owner picker only offers categories with published listings** (a parent counts its
+  subcategories), plus the listing's current one. New categories come in through "suggest a new
+  category"; the admin approval picker shows the full tree.
 - Import mapping lives in `category_aliases` (lower-cased source name → category). Unknown source
   categories are not imported; they are recorded in `import_unmapped` and shown on
   `/admin/categories`.
@@ -295,8 +300,7 @@ unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running
 fields **only on unclaimed listings**, so owner edits survive, and never touches tier, status, owner,
 or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing
 name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
-on `category`, then each `subtypes` entry; a hit on a parent narrows to a later subtype that maps to
-one of its subcategories; no hit → row not imported, source category saved to
+on `category`, then each `subtypes` entry, filed on that category's parent; no hit → row not imported, source category saved to
 `import_unmapped`. **Hours are not imported** (Basic has no hours). CSV only (export CSV from Outscraper, not XLSX). Columns read: `name,
 place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
 email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.

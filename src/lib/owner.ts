@@ -176,12 +176,20 @@ export async function saveOwnerEdit(
   return { result: 'queued', logoError: up.error };
 }
 
-/** Lookups the listing form needs. */
-export async function formOptions() {
+/**
+ * Lookups the listing form needs. Only categories with published listings are offered (a parent
+ * counts its subcategories), plus the listing's current category so an edit keeps it. New categories
+ * come in through "suggest a new category" and the admin.
+ */
+export async function formOptions(currentCategoryId?: number | null) {
   const [tree, ts] = await Promise.all([
     categoryTree(),
     db().select({ id: towns.id, name: towns.name, state: towns.state }).from(towns).orderBy(towns.name),
   ]);
-  const categoryIds = new Set(tree.flatMap((p) => [p.id, ...p.subs.map((s) => s.id)]));
-  return { categories: tree, towns: ts, categoryIds, townIds: new Set(ts.map((t) => t.id)) };
+  const offered = (c: { id: number; own: number }, n: number) => n > 0 || c.id === currentCategoryId;
+  const categories = tree
+    .map((p) => ({ ...p, subs: p.subs.filter((s) => offered(s, s.own)) }))
+    .filter((p) => offered(p, p.total) || p.subs.length > 0);
+  const categoryIds = new Set(categories.flatMap((p) => [p.id, ...p.subs.map((s) => s.id)]));
+  return { categories, towns: ts, categoryIds, townIds: new Set(ts.map((t) => t.id)) };
 }

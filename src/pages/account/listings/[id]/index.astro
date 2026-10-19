@@ -10,7 +10,7 @@ const listing = await getListing(Number(Astro.params.id));
 // Someone else's listing looks the same as a missing one.
 if (!listing || listing.ownerUserId !== user.id) return new Response(null, { status: 404 });
 
-const opts = await formOptions();
+const opts = await formOptions(listing.categoryId);
 const published = listing.status === 'published';
 const pending = published ? await openEdit(listing.id) : undefined;
 // Show the owner their unreviewed edit, not the live values, so they can keep working on it.

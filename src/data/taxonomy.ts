@@ -48,17 +48,28 @@ export const TAXONOMY: TaxonomyParent[] = [
     ],
   },
   {
-    name: 'Cafés & Bakeries',
-    aliases: [],
-    search: ['coffee shop', 'cafe', 'bakery', 'ice cream shop', 'donut shop'],
+    name: 'Coffee Shops',
+    aliases: ['coffee shop', 'cafe', 'espresso bar', 'coffee roasters', 'tea house'],
+    search: ['coffee shop', 'cafe'],
     subs: [
-      { name: 'Coffee Shops', aliases: ['coffee shop', 'cafe', 'espresso bar', 'coffee roasters', 'tea house'] },
-      { name: 'Bakeries', aliases: ['bakery', 'pastry shop', 'cake shop', 'cupcake shop', 'bagel bakery'] },
-      { name: 'Ice Cream & Desserts', aliases: ['ice cream shop', 'frozen yogurt shop', 'dessert shop', 'gelato shop', 'chocolate shop', 'candy store', 'confectionery store'] },
-      { name: 'Donut Shops', aliases: ['donut shop'] },
       { name: 'Juice & Smoothie Bars', aliases: ['juice shop', 'smoothie shop', 'acai shop'] },
     ],
   },
+  {
+    name: 'Bakeries',
+    aliases: ['bakery', 'pastry shop', 'cake shop', 'cupcake shop', 'bagel bakery'],
+    search: ['bakery', 'donut shop'],
+    subs: [
+      { name: 'Donut Shops', aliases: ['donut shop'] },
+    ],
+  },
+  {
+    name: 'Ice Cream & Desserts',
+    aliases: ['ice cream shop', 'frozen yogurt shop', 'dessert shop', 'gelato shop', 'chocolate shop', 'candy store', 'confectionery store'],
+    search: ['ice cream shop'],
+    subs: [],
+  },
+
   {
     name: 'Bars & Nightlife',
     aliases: ['bar', 'lounge'],

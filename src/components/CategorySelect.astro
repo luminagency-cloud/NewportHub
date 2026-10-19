@@ -1,6 +1,6 @@
 ---
-// Category picker grouped by parent. Each group lists its subcategories, then "Other <parent>",
-// which files the listing on the parent itself.
+// Category picker: each parent, followed by its subcategories (indented). Choosing a parent files
+// the listing on the parent itself.
 export interface CategoryGroup {
   id: number;
   name: string;
@@ -21,10 +21,10 @@ const { name, groups, selected, extra, placeholder = 'Choose…', class: classNa
 <select name={name} class={className} {...rest}>
   {placeholder && <option value="">{placeholder}</option>}
   {groups.map((g) => (
-    <optgroup label={g.name}>
-      {g.subs.map((s) => <option value={s.id} selected={!extra?.selected && s.id === selected}>{s.name}</option>)}
-      <option value={g.id} selected={!extra?.selected && g.id === selected}>Other {g.name.toLowerCase()}</option>
-    </optgroup>
+    <>
+      <option value={g.id} selected={!extra?.selected && g.id === selected}>{g.name}</option>
+      {g.subs.map((s) => <option value={s.id} selected={!extra?.selected && s.id === selected}>{'\u00a0\u00a0\u00a0— '}{s.name}</option>)}
+    </>
   ))}
   {extra && <option value={extra.value} selected={extra.selected}>{extra.label}</option>}
 </select>

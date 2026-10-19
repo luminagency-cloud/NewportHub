@@ -21,26 +21,19 @@ export function aliasKey(name: string): string {
 }
 
 /**
- * Our category id for a source row: the main category first, then each subtype in order. The first
- * alias hit wins, except that a hit on a parent is narrowed to the first later subtype that maps to
- * one of that parent's subcategories ("Restaurant, Breakfast restaurant" → Breakfast & Brunch, but
- * "Bar, Seafood restaurant" stays in Bars). Returns null with the name to report when nothing maps.
+ * Our category id for a source row: the main category first, then each subtype in order.
+ * Returns the first alias hit, or null with the name to report as unmapped.
  */
 export function mapSourceCategory(
   candidates: (string | null | undefined)[],
   aliases: Map<string, number>,
-  parentOf: Map<number, number | null> = new Map(),
 ): { categoryId: number } | { unmapped: string | null } {
   const names = candidates.filter((c): c is string => !!c && !!c.trim());
-  const ids = names.map((n) => aliases.get(aliasKey(n)));
-  const first = ids.findIndex((id) => id !== undefined);
-  if (first === -1) return { unmapped: names[0]?.trim() ?? null };
-  const id = ids[first]!;
-  if (parentOf.get(id) === null) {
-    const sub = ids.slice(first + 1).find((s) => s !== undefined && parentOf.get(s) === id);
-    if (sub !== undefined) return { categoryId: sub };
+  for (const name of names) {
+    const id = aliases.get(aliasKey(name));
+    if (id) return { categoryId: id };
   }
-  return { categoryId: id };
+  return { unmapped: names[0]?.trim() ?? null };
 }
 
 /** The page a listing's category links to: the subcategory if broken out, otherwise its parent. */
