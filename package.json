@@ -1,6 +1,6 @@
 {
   "name": "newporthub",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

@@ -2,8 +2,9 @@
 
 Local business directory for Newport County, Rhode Island. Domain: newporthub.com.
 
-**Unfinished work lives in Linear only** (team Luminagency, key `LA`; NewportHub issues start with
-"NewportHub:"; the current umbrella issue is LA-187). Read the relevant issues before starting work.
+**Unfinished work lives in Linear only**: project **NewportHub** (P-LA-12) in team Luminagency
+(key `LA`), https://linear.app/luminagency/project/newporthub-be4355a41506. Current umbrella issue: LA-187.
+New NewportHub issues go in that project. Read the relevant issues before starting work.
 Do not keep a to-do list, roadmap, or "not built yet" notes in this repository. When work is done,
 update or close the Linear issue; when new work is found, add it there. If Linear cannot be reached,
 say so loudly and do not fall back to a file in the repo.
