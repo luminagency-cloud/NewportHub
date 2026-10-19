@@ -79,6 +79,7 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 - **Every commit bumps the version** in `package.json` (at least a patch:
   `npm version patch --no-git-tag-version`, which also updates `package-lock.json`). Minor for new
   features, major for breaking changes. Include the bump in the same commit as the change.
+  If the version is higher than expected, the owner bumped it by hand: bump from there, no comment.
 
 - **Bindings:** `import { env } from 'cloudflare:workers'`. `Astro.locals.runtime.env` no longer
   exists (removed in Astro 6). Run `npm run cf-typegen` after editing `wrangler.toml`.
