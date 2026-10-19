@@ -4,11 +4,11 @@
  *
  *   npx tsx scripts/seed-categories.ts --local | --remote
  */
-import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { TAXONOMY } from '../src/data/taxonomy';
 import { aliasKey, REFRESH_BREAKOUTS_SQL } from '../src/lib/category-rules';
 import { slugify } from '../src/lib/slug';
+import { wrangler } from './wrangler';
 
 const target = process.argv.includes('--remote') ? '--remote' : '--local';
 const q = (v: string) => `'${v.replace(/'/g, "''")}'`;
@@ -37,4 +37,4 @@ for (const p of TAXONOMY) {
 out.push(`${REFRESH_BREAKOUTS_SQL};`);
 writeFileSync('data/categories.sql', out.join('\n') + '\n');
 console.log(`Parents: ${TAXONOMY.length}, subcategories: ${subs}, aliases: ${aliases}`);
-execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', target, '--file', 'data/categories.sql', ...(target === '--remote' ? ['--yes'] : [])], { stdio: 'inherit' });
+wrangler(['d1', 'execute', 'DB', target, '--file', 'data/categories.sql', ...(target === '--remote' ? ['--yes'] : [])]);

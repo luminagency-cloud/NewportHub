@@ -16,12 +16,12 @@
  *
  * The script writes data/seed.sql and runs it with `wrangler d1 execute`.
  */
-import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
 import { SERVICE_STATE, SERVICE_TOWNS } from '../src/data/taxonomy';
 import { mapSourceCategory, REFRESH_BREAKOUTS_SQL } from '../src/lib/category-rules';
 import { slugify } from '../src/lib/slug';
+import { wrangler } from './wrangler';
 
 const args = process.argv.slice(2);
 const target = args.includes('--remote') ? '--remote' : '--local';
@@ -59,10 +59,10 @@ function stateCode(raw: string | null): string | null {
 // ---- wrangler --------------------------------------------------------------
 
 function d1Query<T>(sql: string): T[] {
-  const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', target, '--json', '--command', sql], {
+  const out = wrangler(['d1', 'execute', 'DB', target, '--json', '--command', sql], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
-  });
+  }) as string;
   return (JSON.parse(out) as { results: T[] }[])[0]?.results ?? [];
 }
 
@@ -179,6 +179,4 @@ if (unmapped.size) {
   for (const [cat, u] of [...unmapped].sort((a, b) => b[1].rows - a[1].rows)) console.log(`    ${u.rows} × ${cat} (e.g. ${u.example})`);
 }
 
-execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', target, '--file', outPath, ...(target === '--remote' ? ['--yes'] : [])], {
-  stdio: 'inherit',
-});
+wrangler(['d1', 'execute', 'DB', target, '--file', outPath, ...(target === '--remote' ? ['--yes'] : [])]);
