@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 /** Opening hours, keyed by English day name. An empty array means closed that day. */
 export type Hours = Partial<Record<Weekday, { open: string; close: string }[]>>;
@@ -16,11 +16,35 @@ const timestamps = {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 };
 
-export const categories = sqliteTable('categories', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  slug: text('slug').notNull().unique(),
-  name: text('name').notNull(),
-  description: text('description'),
+/**
+ * Parents (parent_id null) always have a page. Subcategories get their own page only while
+ * `broken_out` is set; see src/lib/category-rules.ts and refreshBreakouts().
+ */
+export const categories = sqliteTable(
+  'categories',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description'),
+    parentId: integer('parent_id').references((): AnySQLiteColumn => categories.id),
+    brokenOut: integer('broken_out', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => [index('categories_parent_idx').on(t.parentId)],
+);
+
+/** Import mapping: a source category name (lower-cased, e.g. "sushi restaurant") → our category. */
+export const categoryAliases = sqliteTable('category_aliases', {
+  alias: text('alias').primaryKey(),
+  categoryId: integer('category_id').notNull().references(() => categories.id, { onDelete: 'cascade' }),
+});
+
+/** Source categories the importer could not map, for admin review. Rows with them were not imported. */
+export const importUnmapped = sqliteTable('import_unmapped', {
+  sourceCategory: text('source_category').primaryKey(),
+  rows: integer('rows').notNull().default(0),
+  example: text('example'),
+  lastSeen: integer('last_seen', { mode: 'timestamp' }),
 });
 
 export const towns = sqliteTable('towns', {

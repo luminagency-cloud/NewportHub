@@ -1,11 +1,14 @@
 ---
 import Base from '../../../layouts/Base.astro';
 import { getPublishedListing } from '../../../lib/queries';
+import { categoryLink } from '../../../lib/category-rules';
 import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
 
 const row = await getPublishedListing(Astro.params.slug!);
 if (!row) return new Response(null, { status: 404 });
-const { listing: l, category, town } = row;
+const { listing: l, category, parent, town } = row;
+// Breadcrumb goes through the parent; the subcategory gets its own crumb only once it has a page.
+const catPage = categoryLink({ ...category, parentSlug: parent?.slug ?? null, parentName: parent?.name ?? null });
 
 const url = new URL(`/listing/${l.slug}`, Astro.site).href;
 const logo = l.logoR2Key ? new URL(`/media/${l.logoR2Key}`, Astro.site).href : undefined;
@@ -43,8 +46,9 @@ const { userId } = Astro.locals.auth();
   <script slot="head" type="application/ld+json" set:html={jsonLdText} />
   <nav class="mb-4 text-sm text-slate-500">
     <a href="/" class="hover:underline">Home</a>{' / '}
-    <a href={`/${category.slug}/`} class="hover:underline">{category.name}</a>{' / '}
-    <a href={`/${category.slug}/${town.slug}/`} class="hover:underline">{town.name}</a>
+    {parent && <><a href={`/${parent.slug}/`} class="hover:underline">{parent.name}</a>{' / '}</>}
+    {catPage.slug === category.slug && <><a href={`/${category.slug}/`} class="hover:underline">{category.name}</a>{' / '}</>}
+    <a href={`/${catPage.slug}/${town.slug}/`} class="hover:underline">{town.name}</a>
   </nav>
 
   <article class={`rounded-xl border p-6 ${l.tier === 'premium' ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300' : l.tier === 'featured' ? 'border-sky-300 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white'}`}>

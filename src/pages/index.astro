@@ -3,14 +3,14 @@ import Base from '../layouts/Base.astro';
 import SearchForm from '../components/SearchForm.astro';
 import ListingCard from '../components/ListingCard.astro';
 import BannerAd from '../components/BannerAd.astro';
-import { allCategories, allTowns, categoriesWithCounts, searchListings } from '../lib/queries';
+import { allTowns, categoryTree, searchListings } from '../lib/queries';
 
-const [grid, categories, towns, top] = await Promise.all([
-  categoriesWithCounts(),
-  allCategories(),
-  allTowns(),
-  searchListings({}),
-]);
+const [tree, towns, top] = await Promise.all([categoryTree(), allTowns(), searchListings({})]);
+const grid = tree.filter((p) => p.total > 0);
+// Subcategories that have their own page get a tile too, most listings first.
+const popular = tree
+  .flatMap((p) => p.subs.filter((s) => s.brokenOut && s.own > 0).map((s) => ({ ...s, parentName: p.name })))
+  .sort((a, b) => b.own - a.own || a.name.localeCompare(b.name));
 const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
 ---
 <Base title="NewportHub" description="Find local businesses in Newport, Middletown, Portsmouth, Jamestown, and across Newport County, RI.">
@@ -18,7 +18,7 @@ const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
   <section class="mb-10 rounded-xl bg-sky-800 px-6 py-10 text-white">
     <h1 class="mb-2 text-3xl font-bold">Local businesses in Newport County</h1>
     <p class="mb-6 text-sky-100">Restaurants, shops, and services in Newport, RI and nearby towns.</p>
-    <div class="text-slate-900"><SearchForm categories={categories} towns={towns} /></div>
+    <div class="text-slate-900"><SearchForm categories={tree} towns={towns} /></div>
   </section>
 
   {spotlight.length > 0 && (
@@ -31,15 +31,25 @@ const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
   <section class="mb-10">
     <h2 class="mb-4 text-xl font-semibold">Browse by category</h2>
     <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      {grid.filter((c) => c.n > 0).map((c) => (
+      {grid.map((c) => (
         <li>
           <a href={`/${c.slug}/`} class="block rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-400 hover:shadow-sm">
             <span class="font-medium">{c.name}</span>
-            <span class="block text-sm text-slate-500">{c.n} {c.n === 1 ? 'listing' : 'listings'}</span>
+            <span class="block text-sm text-slate-500">{c.total} {c.total === 1 ? 'listing' : 'listings'}</span>
           </a>
         </li>
       ))}
     </ul>
+    {popular.length > 0 && (
+      <>
+        <h3 class="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">Popular</h3>
+        <ul class="flex flex-wrap gap-2">
+          {popular.map((s) => (
+            <li><a href={`/${s.slug}/`} class="inline-block rounded-full border border-slate-300 bg-white px-4 py-1.5 hover:border-sky-400">{s.name} <span class="text-slate-400">{s.own}</span></a></li>
+          ))}
+        </ul>
+      </>
+    )}
   </section>
 
   <section>

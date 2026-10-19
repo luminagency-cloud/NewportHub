@@ -1,0 +1,30 @@
+---
+// Category picker grouped by parent. Each group lists its subcategories, then "Other <parent>",
+// which files the listing on the parent itself.
+export interface CategoryGroup {
+  id: number;
+  name: string;
+  subs: { id: number; name: string }[];
+}
+interface Props {
+  name: string;
+  groups: CategoryGroup[];
+  selected?: number | null;
+  /** Extra trailing option, e.g. { value: 'new', label: 'Other (suggest a new category)' }. */
+  extra?: { value: string; label: string; selected?: boolean };
+  placeholder?: string;
+  class?: string;
+  [attr: string]: unknown;
+}
+const { name, groups, selected, extra, placeholder = 'Choose…', class: className, ...rest } = Astro.props;
+---
+<select name={name} class={className} {...rest}>
+  {placeholder && <option value="">{placeholder}</option>}
+  {groups.map((g) => (
+    <optgroup label={g.name}>
+      {g.subs.map((s) => <option value={s.id} selected={!extra?.selected && s.id === selected}>{s.name}</option>)}
+      <option value={g.id} selected={!extra?.selected && g.id === selected}>Other {g.name.toLowerCase()}</option>
+    </optgroup>
+  ))}
+  {extra && <option value={extra.value} selected={extra.selected}>{extra.label}</option>}
+</select>

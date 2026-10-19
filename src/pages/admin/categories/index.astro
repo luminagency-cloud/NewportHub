@@ -1,0 +1,62 @@
+---
+// Read-only view of the category tree and unmapped import categories. Editing comes with LA-189.
+import { desc } from 'drizzle-orm';
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import { isAdmin } from '../../../lib/auth';
+import { BREAKOUT_AT, COLLAPSE_BELOW } from '../../../lib/category-rules';
+import { db } from '../../../lib/db';
+import { categoryTree } from '../../../lib/queries';
+import { importUnmapped } from '../../../db/schema';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const [tree, unmapped] = await Promise.all([
+  categoryTree(),
+  db().select().from(importUnmapped).orderBy(desc(importUnmapped.rows)),
+]);
+const pill = 'rounded px-1.5 py-0.5 text-[11px] font-medium';
+---
+<Base title="Categories" noindex>
+  <AdminNav current="categories" />
+  <h1 class="mb-2 text-2xl font-bold">Categories</h1>
+  <p class="mb-6 text-sm text-slate-600">
+    A subcategory gets its own page at {BREAKOUT_AT} live listings and loses it below {COLLAPSE_BELOW}. Until then its listings
+    show on the parent page. Counts are live (published) listings.
+  </p>
+
+  {unmapped.length > 0 && (
+    <section class="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
+      <h2 class="mb-2 font-semibold text-amber-900">Unmapped import categories ({unmapped.length})</h2>
+      <p class="mb-3 text-amber-900">These rows were not imported. Add the category name as an alias in <code>src/data/taxonomy.ts</code>, run <code>npm run seed:categories:remote</code>, then re-run the import.</p>
+      <table class="w-full text-left">
+        <thead class="text-xs text-amber-800"><tr><th class="py-1">Source category</th><th class="py-1 text-right">Rows</th><th class="py-1 pl-4">Example</th></tr></thead>
+        <tbody>{unmapped.map((u) => <tr class="border-t border-amber-200"><td class="py-1">{u.sourceCategory}</td><td class="py-1 text-right tabular-nums">{u.rows}</td><td class="py-1 pl-4 text-amber-900">{u.example}</td></tr>)}</tbody>
+      </table>
+    </section>
+  )}
+
+  <div class="grid gap-4 md:grid-cols-2">
+    {tree.map((p) => (
+      <section class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <h2 class="flex items-baseline justify-between font-semibold">
+          <a href={`/${p.slug}/`} class="hover:underline">{p.name}</a>
+          <span class="tabular-nums text-slate-500">{p.total}</span>
+        </h2>
+        <ul class="mt-2 space-y-0.5">
+          {p.subs.map((s) => (
+            <li class="flex items-center justify-between gap-2">
+              <span class={s.own ? '' : 'text-slate-400'}>
+                {s.name}
+                {s.brokenOut && <a href={`/${s.slug}/`} class={`${pill} ml-1 bg-green-100 text-green-900`}>own page</a>}
+              </span>
+              <span class="tabular-nums text-slate-500">{s.own}</span>
+            </li>
+          ))}
+          {p.own > 0 && <li class="flex justify-between text-slate-600"><span>Other {p.name.toLowerCase()}</span><span class="tabular-nums">{p.own}</span></li>}
+        </ul>
+      </section>
+    ))}
+  </div>
+</Base>

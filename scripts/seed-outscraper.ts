@@ -3,18 +3,24 @@
  *
  *   npx tsx scripts/seed-outscraper.ts [file.csv] [--local | --remote]
  *
- * Every imported listing is status=published, tier=free, unclaimed. Re-running is safe: rows are
- * matched on Outscraper's place_id, source fields are refreshed, and tier/status/owner/Stripe
- * fields are left alone so claims and paid tiers survive a re-import.
+ * Every imported listing is status=published, tier=free (Basic), unclaimed. Re-running is safe: rows
+ * are matched on Outscraper's place_id; unclaimed listings get fresh source fields, and claimed
+ * listings are left alone so owner edits survive. Tier, status, owner, and Stripe fields are never
+ * touched.
+ *
+ * Categories come from the alias table (seed it first: npm run seed:categories:local). Rows whose
+ * category has no alias are not imported; their source categories are saved to import_unmapped for
+ * review. Only the service towns in src/data/taxonomy.ts are imported. Hours are not imported
+ * (Basic listings have no hours; Linear LA-190).
  *
  * The script writes data/seed.sql and runs it with `wrangler d1 execute`.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
-import { WEEKDAYS, type Hours, type Weekday } from '../src/db/schema';
-import { RESERVED_SLUGS, slugify } from '../src/lib/slug';
-import { parseDay } from '../src/lib/hours-parse';
+import { SERVICE_STATE, SERVICE_TOWNS } from '../src/data/taxonomy';
+import { mapSourceCategory, REFRESH_BREAKOUTS_SQL } from '../src/lib/category-rules';
+import { slugify } from '../src/lib/slug';
 
 const args = process.argv.slice(2);
 const target = args.includes('--remote') ? '--remote' : '--local';
@@ -49,36 +55,6 @@ function stateCode(raw: string | null): string | null {
   return US_STATES[raw.toLowerCase()] ?? null;
 }
 
-/**
- * Outscraper `working_hours` appears as a JSON object ({"Monday": "9AM-5PM", ...}, values sometimes
- * arrays) or in the old pipe format ("Monday,9AM-5PM|Tuesday,..."). Unreadable days are dropped.
- */
-function parseHours(raw: string | null): Hours | null {
-  if (!raw) return null;
-  let byDay: Record<string, unknown> = {};
-  try {
-    byDay = JSON.parse(raw);
-  } catch {
-    try {
-      byDay = JSON.parse(raw.replace(/'/g, '"'));
-    } catch {
-      for (const chunk of raw.split('|')) {
-        const i = chunk.indexOf(',');
-        if (i > 0) byDay[chunk.slice(0, i).trim()] = chunk.slice(i + 1);
-      }
-    }
-  }
-  const hours: Hours = {};
-  for (const [k, v] of Object.entries(byDay)) {
-    const day = WEEKDAYS.find((d) => d.toLowerCase() === k.trim().toLowerCase()) as Weekday | undefined;
-    if (!day) continue;
-    const text = Array.isArray(v) ? v.join(',') : String(v ?? '');
-    const parsed = parseDay(text);
-    if (parsed) hours[day] = parsed;
-  }
-  return Object.keys(hours).length ? hours : null;
-}
-
 // ---- wrangler --------------------------------------------------------------
 
 function d1Query<T>(sql: string): T[] {
@@ -97,37 +73,49 @@ const q = (v: string | number | null | undefined) =>
 const rows: Row[] = parse(readFileSync(csvPath), { columns: true, skip_empty_lines: true, bom: true, relax_column_count: true });
 console.log(`Read ${rows.length} rows from ${csvPath}`);
 
+const aliasRows = d1Query<{ alias: string; category_id: number }>('SELECT alias, category_id FROM category_aliases');
+if (!aliasRows.length) {
+  console.error('No category aliases in the database. Run `npm run seed:categories:local` (or :remote) first.');
+  process.exit(1);
+}
+const aliases = new Map(aliasRows.map((r) => [r.alias, r.category_id]));
 const existingListings = d1Query<{ slug: string; source_place_id: string | null }>('SELECT slug, source_place_id FROM listings');
-const existingCats = new Set(d1Query<{ slug: string }>('SELECT slug FROM categories').map((r) => r.slug));
-const existingTowns = new Set(d1Query<{ slug: string }>('SELECT slug FROM towns').map((r) => r.slug));
-
 const slugByPlace = new Map(existingListings.filter((r) => r.source_place_id).map((r) => [r.source_place_id!, r.slug]));
 const takenSlugs = new Set(existingListings.map((r) => r.slug));
+const serviceTown = new Map(SERVICE_TOWNS.map((t) => [t.toLowerCase(), t]));
 
-const cats = new Map<string, string>(); // slug -> name
-const townRows = new Map<string, { name: string; state: string }>();
 const statements: string[] = [];
-const skipped: string[] = [];
+const skipped = new Map<string, string[]>(); // reason -> example labels
+const unmapped = new Map<string, { rows: number; example: string }>();
+const seenPlaces = new Set<string>();
+const skip = (reason: string, label: string) => skipped.set(reason, [...(skipped.get(reason) ?? []), label]);
 
 for (const [i, row] of rows.entries()) {
   const name = val(row, 'name');
   const placeId = val(row, 'place_id', 'google_id');
-  const catName = val(row, 'category', 'type') ?? val(row, 'subtypes')?.split(',')[0]?.trim() ?? null;
   const city = val(row, 'city');
   const state = stateCode(val(row, 'us_state', 'state'));
-  const label = `row ${i + 2}${name ? ` (${name})` : ''}`;
+  const label = `row ${i + 2}${name ? ` (${name}${city ? `, ${city}` : ''})` : ''}`;
 
-  if (val(row, 'business_status') === 'CLOSED_PERMANENTLY') { skipped.push(`${label}: permanently closed`); continue; }
-  if (!name || !catName || !city || !state) { skipped.push(`${label}: missing name, category, city, or state`); continue; }
+  if (placeId && seenPlaces.has(placeId)) { skip('duplicate in this file', label); continue; }
+  if (placeId) seenPlaces.add(placeId);
+  if (val(row, 'business_status') === 'CLOSED_PERMANENTLY') { skip('permanently closed', label); continue; }
+  if (!name || !city || !state) { skip('missing name, city, or state', label); continue; }
+  const town = state === SERVICE_STATE ? serviceTown.get(city.toLowerCase()) : undefined;
+  if (!town) { skip(`outside the service towns (${city}, ${state})`, label); continue; }
 
-  const catSlug = slugify(catName);
-  const townSlug = slugify(city);
-  cats.set(catSlug, cats.get(catSlug) ?? catName);
-  if (!townRows.has(townSlug)) townRows.set(townSlug, { name: city, state });
+  const mapped = mapSourceCategory([val(row, 'category', 'type'), ...(val(row, 'subtypes')?.split(',') ?? [])], aliases);
+  if (!('categoryId' in mapped)) {
+    const key = mapped.unmapped ?? '(no category)';
+    const u = unmapped.get(key) ?? { rows: 0, example: name };
+    u.rows++;
+    unmapped.set(key, u);
+    continue;
+  }
 
   let slug = placeId ? slugByPlace.get(placeId) : undefined;
   if (!slug) {
-    const base = slugify(`${name} ${city}`);
+    const base = slugify(`${name} ${town}`);
     slug = base;
     for (let n = 2; takenSlugs.has(slug); n++) slug = `${base}-${n}`;
     takenSlugs.add(slug);
@@ -136,56 +124,53 @@ for (const [i, row] of rows.entries()) {
 
   const lat = Number(val(row, 'latitude'));
   const lng = Number(val(row, 'longitude'));
-  const hours = parseHours(val(row, 'working_hours', 'working_hours_old_format'));
   const fields = {
-    slug,
-    name,
-    category_id: `(SELECT id FROM categories WHERE slug = ${q(catSlug)})`,
-    town_id: `(SELECT id FROM towns WHERE slug = ${q(townSlug)})`,
+    slug: q(slug),
+    name: q(name),
+    category_id: String(mapped.categoryId),
+    town_id: `(SELECT id FROM towns WHERE slug = ${q(slugify(town))})`,
     address: q(val(row, 'full_address', 'address')),
     phone: q(val(row, 'phone', 'phone_1')),
     website: q(val(row, 'site', 'website')),
     email: q(val(row, 'email', 'email_1')),
     description: q(val(row, 'description', 'about')),
-    hours: q(hours ? JSON.stringify(hours) : null),
     lat: Number.isFinite(lat) && lat !== 0 ? String(lat) : 'NULL',
     lng: Number.isFinite(lng) && lng !== 0 ? String(lng) : 'NULL',
     source_place_id: q(placeId),
   };
   const cols = Object.keys(fields);
-  const values = Object.entries(fields).map(([k, v]) => (k === 'slug' || k === 'name' ? q(v) : v));
-  // Source fields only: tier, status, owner, and Stripe ids stay as they are on re-import.
+  // Source fields only, and only while unclaimed: an owner's edits are never overwritten.
   const refresh = cols
     .filter((c) => !['slug', 'source_place_id'].includes(c))
     .map((c) => `${c} = excluded.${c}`)
     .concat('updated_at = unixepoch()')
     .join(', ');
-  const conflict = placeId ? `ON CONFLICT(source_place_id) DO UPDATE SET ${refresh}` : 'ON CONFLICT(slug) DO NOTHING';
-  statements.push(
-    `INSERT INTO listings (${cols.join(', ')}, status, tier) VALUES (${values.join(', ')}, 'published', 'free') ${conflict};`,
-  );
-}
-
-// /[slug]/ serves categories and towns. The DB triggers would reject a clash mid-import; fail early and clearly instead.
-const allCats = new Set([...existingCats, ...cats.keys()]);
-const allTowns = new Set([...existingTowns, ...townRows.keys()]);
-const clashes = [...allCats].filter((s) => allTowns.has(s) || RESERVED_SLUGS.has(s))
-  .concat([...allTowns].filter((s) => RESERVED_SLUGS.has(s)));
-if (clashes.length) {
-  console.error(`Slug clash between categories, towns, or reserved routes: ${[...new Set(clashes)].join(', ')}`);
-  console.error('Rename the category or town in the CSV and run again. Nothing was written.');
-  process.exit(1);
+  const conflict = placeId
+    ? `ON CONFLICT(source_place_id) DO UPDATE SET ${refresh} WHERE listings.owner_user_id IS NULL`
+    : 'ON CONFLICT(slug) DO NOTHING';
+  statements.push(`INSERT INTO listings (${cols.join(', ')}, status, tier) VALUES (${Object.values(fields).join(', ')}, 'published', 'free') ${conflict};`);
 }
 
 const sql = [
-  ...[...cats].map(([slug, name]) => `INSERT INTO categories (slug, name) VALUES (${q(slug)}, ${q(name)}) ON CONFLICT(slug) DO NOTHING;`),
-  ...[...townRows].map(([slug, t]) => `INSERT INTO towns (slug, name, state) VALUES (${q(slug)}, ${q(t.name)}, ${q(t.state)}) ON CONFLICT(slug) DO NOTHING;`),
+  ...SERVICE_TOWNS.map((t) => `INSERT INTO towns (slug, name, state) VALUES (${q(slugify(t))}, ${q(t)}, ${q(SERVICE_STATE)}) ON CONFLICT(slug) DO NOTHING;`),
   ...statements,
+  ...[...unmapped].map(([cat, u]) =>
+    `INSERT INTO import_unmapped (source_category, rows, example, last_seen) VALUES (${q(cat)}, ${u.rows}, ${q(u.example)}, unixepoch()) ` +
+    `ON CONFLICT(source_category) DO UPDATE SET rows = excluded.rows, example = excluded.example, last_seen = excluded.last_seen;`),
+  `${REFRESH_BREAKOUTS_SQL};`,
 ].join('\n');
 writeFileSync(outPath, sql + '\n');
 
-console.log(`Categories: ${cats.size}, towns: ${townRows.size}, listings: ${statements.length}, skipped: ${skipped.length}`);
-for (const s of skipped) console.log(`  skipped ${s}`);
+const unmappedRows = [...unmapped.values()].reduce((n, u) => n + u.rows, 0);
+const skippedRows = [...skipped.values()].reduce((n, l) => n + l.length, 0);
+console.log(`Listings imported or refreshed: ${statements.length}, unmapped: ${unmappedRows}, skipped: ${skippedRows}`);
+for (const [reason, labels] of skipped) {
+  console.log(`  skipped ${labels.length} × ${reason}${labels.length > 3 ? `, e.g. ${labels.slice(0, 3).join('; ')}` : `: ${labels.join('; ')}`}`);
+}
+if (unmapped.size) {
+  console.log(`  unmapped categories (add aliases in src/data/taxonomy.ts, re-seed categories, re-run this import):`);
+  for (const [cat, u] of [...unmapped].sort((a, b) => b[1].rows - a[1].rows)) console.log(`    ${u.rows} × ${cat} (e.g. ${u.example})`);
+}
 
 execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', target, '--file', outPath, ...(target === '--remote' ? ['--yes'] : [])], {
   stdio: 'inherit',

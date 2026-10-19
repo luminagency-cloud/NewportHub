@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { categories, claims, listings, pendingEdits, towns, type Listing, type ListingChanges } from '../db/schema';
+import { claims, listings, pendingEdits, towns, type Listing, type ListingChanges } from '../db/schema';
 import type { SessionUser } from './auth';
 import { db } from './db';
+import { categoryTree } from './queries';
 import { diffChanges, type ListingFormValues } from './listing-form';
 import { deleteMedia, uploadLogo } from './media';
 import { slugify } from './slug';
@@ -177,9 +178,10 @@ export async function saveOwnerEdit(
 
 /** Lookups the listing form needs. */
 export async function formOptions() {
-  const [cats, ts] = await Promise.all([
-    db().select({ id: categories.id, name: categories.name }).from(categories).orderBy(categories.name),
+  const [tree, ts] = await Promise.all([
+    categoryTree(),
     db().select({ id: towns.id, name: towns.name, state: towns.state }).from(towns).orderBy(towns.name),
   ]);
-  return { categories: cats, towns: ts, categoryIds: new Set(cats.map((c) => c.id)), townIds: new Set(ts.map((t) => t.id)) };
+  const categoryIds = new Set(tree.flatMap((p) => [p.id, ...p.subs.map((s) => s.id)]));
+  return { categories: tree, towns: ts, categoryIds, townIds: new Set(ts.map((t) => t.id)) };
 }

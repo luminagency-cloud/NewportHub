@@ -1,37 +1,56 @@
 ---
-// One URL level serves both /[category]/ and /[town]/. DB triggers keep the two slug sets disjoint.
+// One URL level serves /[parent]/, /[subcategory]/, and /[town]/. DB triggers keep category and
+// town slugs disjoint. A subcategory without its own page yet redirects to its parent.
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
 import BannerAd from '../../components/BannerAd.astro';
-import { allCategories, allTowns, getCategory, getTown, searchListings } from '../../lib/queries';
+import { allTowns, categoryTree, filterFor, getCategory, getTown, parentIdsInTown, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
 const slug = Astro.params.slug!;
 const page = pageParam(Astro.url);
-const category = await getCategory(slug);
-const town = category ? undefined : await getTown(slug);
-if (!category && !town) return new Response(null, { status: 404 });
+const found = await getCategory(slug);
+const town = found ? undefined : await getTown(slug);
+if (!found && !town) return new Response(null, { status: 404 });
 
-const { rows, total } = await searchListings({ categoryId: category?.id, townId: town?.id, page });
-// Cross-links: a category page links to its towns, a town page links to its categories.
-const related = category ? await allTowns() : await allCategories();
+const category = found?.category;
+const parent = found?.parent ?? null;
+if (category && parent && !category.brokenOut) {
+  const qs = Astro.url.search;
+  return Astro.redirect(`/${parent.slug}/${qs}`, 301);
+}
+
+const { rows, total } = await searchListings({ category: category && filterFor(category), townId: town?.id, page });
+
+// Cross-links. Parent page: its broken-out subcategories, then towns. Sub page: towns.
+// Town page: the parents that have listings in this town.
+const tree = await categoryTree();
+const subLinks = category && !parent ? (tree.find((p) => p.id === category.id)?.subs.filter((s) => s.brokenOut && s.own > 0) ?? []) : [];
+const townLinks = category ? await allTowns() : [];
+const parentsHere = town ? await parentIdsInTown(town.id) : new Set<number>();
+const categoryLinks = town ? tree.filter((p) => parentsHere.has(p.id)) : [];
 
 const title = category ? `${category.name} in Newport County, RI` : `Businesses in ${town!.name}, ${town!.state}`;
 const description = category?.description ?? `${total} local listings. ${title}.`;
+const chip = 'inline-block rounded-full border border-slate-300 bg-white px-3 py-1 hover:border-sky-400';
 ---
 <Base title={title} description={description} canonicalPath={`/${slug}/`}>
-  <nav class="mb-2 text-sm text-slate-500"><a href="/" class="hover:underline">Home</a> / {category?.name ?? town!.name}</nav>
+  <nav class="mb-2 text-sm text-slate-500">
+    <a href="/" class="hover:underline">Home</a>{' / '}
+    {parent && <><a href={`/${parent.slug}/`} class="hover:underline">{parent.name}</a>{' / '}</>}
+    {category?.name ?? town!.name}
+  </nav>
   <h1 class="mb-2 text-2xl font-bold">{title}</h1>
   {category?.description && <p class="mb-4 text-slate-600">{category.description}</p>}
-  <ul class="mb-6 flex flex-wrap gap-2 text-sm">
-    {related.map((r) => (
-      <li>
-        <a
-          href={category ? `/${slug}/${r.slug}/` : `/${r.slug}/${slug}/`}
-          class="inline-block rounded-full border border-slate-300 bg-white px-3 py-1 hover:border-sky-400"
-        >{r.name}</a>
-      </li>
-    ))}
+  {subLinks.length > 0 && (
+    <ul class="mb-3 flex flex-wrap gap-2 text-sm" aria-label="Types">
+      {subLinks.map((s) => <li><a href={`/${s.slug}/`} class={`${chip} font-medium`}>{s.name} <span class="text-slate-400">{s.own}</span></a></li>)}
+    </ul>
+  )}
+  <ul class="mb-6 flex flex-wrap gap-2 text-sm" aria-label={category ? 'Towns' : 'Categories'}>
+    {category
+      ? townLinks.map((t) => <li><a href={`/${slug}/${t.slug}/`} class={chip}>{t.name}</a></li>)
+      : categoryLinks.map((p) => <li><a href={`/${p.slug}/${slug}/`} class={chip}>{p.name}</a></li>)}
   </ul>
   {category ? (
     <div class="grid items-start gap-8 lg:grid-cols-[1fr_300px]">

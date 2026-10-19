@@ -34,8 +34,13 @@ src/lib/db.ts             db() — Drizzle client bound to env.DB
 src/lib/queries.ts        all read queries; pages do not build SQL themselves
 src/lib/hours.ts          hours JSON → display rows and schema.org openingHoursSpecification
 src/lib/slug.ts           slugify() and RESERVED_SLUGS
-src/pages/[slug]/index.astro   /[category]/ OR /[town]/ (category is checked first)
-src/pages/[slug]/[town].astro  /[category]/[town]/
+src/pages/[slug]/index.astro   /[parent]/, /[subcategory]/ (only if broken out, else 301 to parent), or /[town]/
+src/pages/[slug]/[town].astro  /[category]/[town]/ (same redirect rule)
+src/data/taxonomy.ts           starting category tree: parents, subcategories, Outscraper aliases, search terms, service towns
+src/lib/category-rules.ts      pure: BREAKOUT_AT/COLLAPSE_BELOW, nextBrokenOut, alias matching, REFRESH_BREAKOUTS_SQL (unit-tested)
+src/lib/categories.ts          refreshBreakouts()
+src/components/CategorySelect.astro  parent → subcategory picker (owner form, admin approvals)
+src/pages/admin/categories/    read-only category tree + unmapped import categories
 src/pages/listing/[slug]/index.astro  detail page + LocalBusiness JSON-LD + claim/edit link
 src/pages/listing/[slug]/claim.astro  claim an unclaimed listing (signed in)
 src/pages/search.astro         ?q=&category=&town=&page=
@@ -63,6 +68,8 @@ src/pages/sitemap.xml.ts       sitemap (only pages with published listings)
 src/pages/robots.txt.ts        robots.txt
 public/og-default.png          1200×630 default social card (regenerate with PIL if the brand changes)
 scripts/seed-outscraper.ts     CSV import
+scripts/seed-categories.ts     writes src/data/taxonomy.ts to D1 (adds only)
+scripts/outscraper-queries.ts  prints Outscraper queries (search terms × service towns)
 ```
 
 ## Conventions
@@ -92,6 +99,24 @@ scripts/seed-outscraper.ts     CSV import
   which does not work on D1; replace it with `PRAGMA defer_foreign_keys = on` and check the
   generated `INSERT … SELECT` (in 0002 it selected new columns from the old table). Test a rebuild
   migration on a seeded local DB before applying it remotely.
+
+## Categories
+
+- Two levels. **Parents** (`parent_id` null) always have a page. **Subcategories** belong to one
+  parent. A listing points at a subcategory, or at a parent ("Other <parent>", no label).
+- A subcategory gets its own page (`broken_out = 1`) at `BREAKOUT_AT` (5) published listings and
+  loses it below `COLLAPSE_BELOW` (3); in between it keeps its state. While not broken out, its URL
+  301-redirects to the parent (and `/sub/town/` to `/parent/town/`), it is not in the sitemap, and
+  its listings show on the parent page with the subcategory as the card label.
+- **Run `refreshBreakouts()` after anything that publishes, unpublishes, or re-categorises a
+  listing** (admin approvals do; the import runs the same SQL). Forgetting it leaves pages stale.
+- Slugs are flat and share one namespace with towns (slug-clash triggers). Nested URLs would clash
+  with `/category/town/`.
+- Import mapping lives in `category_aliases` (lower-cased source name → category). Unknown source
+  categories are not imported; they are recorded in `import_unmapped` and shown on
+  `/admin/categories`.
+- `src/data/taxonomy.ts` seeds a fresh database (`npm run seed:categories:*`, add-only). Its tests
+  check that no alias maps twice and no slug clashes with a town or reserved route.
 
 ## Owners and moderation
 
@@ -216,7 +241,9 @@ emails created this way are verified) and sign in with a sign-in token
 npm install
 npm run db:migrate:local                  # create/upgrade local D1 (.wrangler/state)
 npm run seed:local                        # import data/sample-outscraper.csv
+npm run seed:categories:local            # category tree + aliases from src/data/taxonomy.ts (run before importing)
 npx tsx scripts/seed-outscraper.ts path/to/export.csv --local   # import a real Outscraper export
+npm run outscraper:queries                # Outscraper query list (add -- --test for the 4-query test)
 
 npm run dev                               # astro dev, http://localhost:4321 (uses local D1/R2)
 npm run preview                           # astro build + wrangler dev, http://127.0.0.1:8787 (production-like)
@@ -240,6 +267,7 @@ npx wrangler whoami                 # right account?
 npx wrangler secret list            # names only; see the Environment table
 npm run check && npm test
 npm run db:migrate:remote           # ALWAYS before deploying code that needs it
+npm run seed:categories:remote      # when src/data/taxonomy.ts changed (add-only, safe to re-run)
 npm run build && npx wrangler deploy
 curl -sI https://newporthub.com/ https://newporthub.com/sitemap.xml https://newporthub.com/robots.txt
 ```
@@ -262,13 +290,18 @@ newporthub.com.
 ## Seed import (Outscraper)
 
 `scripts/seed-outscraper.ts` reads an Outscraper Google Maps CSV, writes `data/seed.sql`, and runs it
-with `wrangler d1 execute`. New listings: `status=published`, `tier=free`, unclaimed. Rows are
-matched on `place_id` (`source_place_id` column), so re-running refreshes source fields and keeps
-tier, status, owner, and Stripe fields. Permanently closed rows and rows without name, category,
-city, or state are skipped and listed. Columns read: `name, place_id|google_id, category|type|subtypes,
-city, us_state|state, full_address, phone, site, email|email_1, description|about, working_hours,
-latitude, longitude, business_status`. Logos are not imported (Outscraper's `logo` is a Google URL;
-copy to R2 separately if wanted).
+with `wrangler d1 execute`. Seed categories first. New listings: `status=published`, `tier=free`,
+unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running refreshes source
+fields **only on unclaimed listings**, so owner edits survive, and never touches tier, status, owner,
+or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing
+name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
+on `category`, then each `subtypes` entry; no hit → row not imported, source category saved to
+`import_unmapped`. **Hours are not imported** (Basic has no hours). Columns read: `name,
+place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
+email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.
+
+Outscraper settings: Google Maps data only, no enrichments (emails, contacts, social, phone
+validation, reviews, photos). Queries: `npm run outscraper:queries` (search term × town).
 
 `data/sample-outscraper.csv` is fictional test data (names end in "(SAMPLE)", 555 phone numbers,
 example.com sites). Do not deploy it.

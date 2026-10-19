@@ -1,10 +1,11 @@
 ---
-import type { ListingCard } from '../lib/queries';
+import { cardCategory, type ListingCard } from '../lib/queries';
 
 interface Props {
   listing: ListingCard;
 }
 const { listing: l } = Astro.props;
+const cat = cardCategory(l);
 const frame = {
   premium: 'border-amber-400 bg-amber-50 ring-2 ring-amber-300 shadow-md',
   featured: 'border-sky-300 bg-white ring-1 ring-sky-200 shadow-sm',
@@ -29,7 +30,7 @@ const frame = {
       <a href={`/listing/${l.slug}`} class="after:absolute after:inset-0 hover:underline">{l.name}</a>
     </h3>
     <p class="text-sm text-slate-600">
-      <a href={`/${l.categorySlug}/`} class="relative z-10 hover:underline">{l.categoryName}</a>
+      <a href={`/${cat.link.slug}/`} class="relative z-10 hover:underline">{cat.label}</a>
       {' · '}
       <a href={`/${l.townSlug}/`} class="relative z-10 hover:underline">{l.townName}</a>
     </p>

@@ -1,9 +1,10 @@
 ---
 import { WEEKDAYS, type Hours } from '../db/schema';
 import { formatDay } from '../lib/hours-parse';
+import CategorySelect, { type CategoryGroup } from './CategorySelect.astro';
 
 interface Props {
-  categories: { id: number; name: string }[];
+  categories: CategoryGroup[];
   towns: { id: number; name: string; state: string }[];
   values?: {
     name?: string | null;
@@ -47,11 +48,14 @@ const townNew = allowSuggestions && !!values.suggestedTown;
   <div class="grid gap-5 sm:grid-cols-2">
     <div>
       <label class={label}>Category *
-        <select name="categoryId" class={input} data-other="suggestedCategoryWrap">
-          <option value="">Choose…</option>
-          {categories.map((c) => <option value={c.id} selected={!catNew && c.id === values.categoryId}>{c.name}</option>)}
-          {allowSuggestions && <option value="new" selected={catNew}>Other (suggest a new category)</option>}
-        </select>
+        <CategorySelect
+          name="categoryId"
+          class={input}
+          data-other="suggestedCategoryWrap"
+          groups={categories}
+          selected={values.categoryId}
+          extra={allowSuggestions ? { value: 'new', label: 'Something else (suggest a new category)', selected: catNew } : undefined}
+        />
       </label>
       {allowSuggestions && (
         <label id="suggestedCategoryWrap" class={`${label} mt-2`} hidden={!catNew}>New category name

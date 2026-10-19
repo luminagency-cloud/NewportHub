@@ -1,21 +1,25 @@
 ---
 // /[category]/[town]/ — the folder param is named `slug` because it shares a level with /[town]/.
+// A subcategory without its own page yet redirects to its parent's page for the same town.
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
 import BannerAd from '../../components/BannerAd.astro';
-import { getCategory, getTown, searchListings } from '../../lib/queries';
+import { filterFor, getCategory, getTown, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
-const [category, town] = await Promise.all([getCategory(Astro.params.slug!), getTown(Astro.params.town!)]);
-if (!category || !town) return new Response(null, { status: 404 });
+const [found, town] = await Promise.all([getCategory(Astro.params.slug!), getTown(Astro.params.town!)]);
+if (!found || !town) return new Response(null, { status: 404 });
+const { category, parent } = found;
+if (parent && !category.brokenOut) return Astro.redirect(`/${parent.slug}/${town.slug}/${Astro.url.search}`, 301);
 
 const page = pageParam(Astro.url);
-const { rows, total } = await searchListings({ categoryId: category.id, townId: town.id, page });
+const { rows, total } = await searchListings({ category: filterFor(category), townId: town.id, page });
 const title = `${category.name} in ${town.name}, ${town.state}`;
 ---
 <Base title={title} description={`${total} ${category.name.toLowerCase()} listings in ${town.name}, ${town.state}.`} canonicalPath={`/${category.slug}/${town.slug}/`} noindex={total === 0}>
   <nav class="mb-2 text-sm text-slate-500">
     <a href="/" class="hover:underline">Home</a>{' / '}
+    {parent && <><a href={`/${parent.slug}/`} class="hover:underline">{parent.name}</a>{' / '}</>}
     <a href={`/${category.slug}/`} class="hover:underline">{category.name}</a>{' / '}
     <a href={`/${town.slug}/`} class="hover:underline">{town.name}</a>
   </nav>

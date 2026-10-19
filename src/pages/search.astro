@@ -2,7 +2,7 @@
 import Base from '../layouts/Base.astro';
 import SearchForm from '../components/SearchForm.astro';
 import ListingGrid from '../components/ListingGrid.astro';
-import { allCategories, allTowns, searchListings } from '../lib/queries';
+import { allTowns, categoryTree, searchListings } from '../lib/queries';
 import { pageParam } from '../lib/params';
 
 const q = (Astro.url.searchParams.get('q') ?? '').slice(0, 100);
@@ -10,16 +10,18 @@ const categorySlug = Astro.url.searchParams.get('category') ?? '';
 const townSlug = Astro.url.searchParams.get('town') ?? '';
 const page = pageParam(Astro.url);
 
-const [categories, towns] = await Promise.all([allCategories(), allTowns()]);
-const category = categories.find((c) => c.slug === categorySlug);
+const [tree, towns] = await Promise.all([categoryTree(), allTowns()]);
+// Any category slug filters, including subcategories without their own page (old links keep working).
+const nodes = tree.flatMap((p) => [{ ...p, isParent: true }, ...p.subs.map((s) => ({ ...s, isParent: false }))]);
+const category = nodes.find((c) => c.slug === categorySlug);
 const town = towns.find((t) => t.slug === townSlug);
-const { rows, total } = await searchListings({ q, categoryId: category?.id, townId: town?.id, page });
+const { rows, total } = await searchListings({ q, category: category && { id: category.id, isParent: category.isParent }, townId: town?.id, page });
 
 const heading = [q && `“${q}”`, category?.name, town && `in ${town.name}`].filter(Boolean).join(' ') || 'All listings';
 ---
 <Base title={`Search: ${heading}`} noindex>
   <h1 class="mb-4 text-2xl font-bold">{heading}</h1>
-  <div class="mb-6"><SearchForm categories={categories} towns={towns} q={q} category={category?.slug} town={town?.slug} /></div>
+  <div class="mb-6"><SearchForm categories={tree} towns={towns} q={q} category={category?.slug} town={town?.slug} /></div>
   <p class="mb-4 text-sm text-slate-500">{total} {total === 1 ? 'result' : 'results'}</p>
   <ListingGrid rows={rows} total={total} page={page} />
 </Base>

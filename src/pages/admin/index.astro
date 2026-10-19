@@ -8,6 +8,8 @@ import {
   approveClaim, approveEdit, approveListing, lookups, moderationQueues, rejectClaim, rejectEdit, rejectListing,
 } from '../../lib/admin';
 import { formatDay } from '../../lib/hours-parse';
+import { categoryTree } from '../../lib/queries';
+import CategorySelect from '../../components/CategorySelect.astro';
 import { isAdmin } from '../../lib/auth';
 
 const { userId } = Astro.locals.auth();
@@ -32,8 +34,10 @@ if (Astro.request.method === 'POST') {
   return Astro.redirect(`/admin?${q}`, 303);
 }
 
-const [{ newListings, openClaims, edits }, { categories, towns }] = await Promise.all([moderationQueues(), lookups()]);
-const catName = new Map(categories.map((c) => [c.id, c.name]));
+const [{ newListings, openClaims, edits }, { categories, towns }, tree] = await Promise.all([moderationQueues(), lookups(), categoryTree()]);
+const parentName = new Map(categories.filter((c) => c.parentId === null).map((c) => [c.id, c.name]));
+// "Pizza (Restaurants)" for subcategories, so the admin always sees where a listing lands.
+const catName = new Map(categories.map((c) => [c.id, c.parentId ? `${c.name} (${parentName.get(c.parentId) ?? '?'})` : c.name]));
 const townName = new Map(towns.map((t) => [t.id, `${t.name}, ${t.state}`]));
 
 // Submitter emails for new listings come from Clerk; the queue still works if the lookup fails.
@@ -100,12 +104,13 @@ const field = 'rounded-md border border-slate-300 bg-white px-2 py-1 text-sm';
             <form method="post" class="flex flex-wrap items-end gap-2">
               <input type="hidden" name="action" value="approve-listing" /><input type="hidden" name="id" value={l.id} />
               <label class="text-xs text-slate-600">Category<br />
-                <select name="categoryId" class={field}>
-                  {categories.map((c) => <option value={c.id} selected={c.id === l.categoryId}>{c.name}</option>)}
-                  <option value="new" selected={!l.categoryId}>New…</option>
-                </select>
+                <CategorySelect name="categoryId" class={field} groups={tree} selected={l.categoryId} placeholder="" extra={{ value: 'new', label: 'New subcategory…', selected: !l.categoryId }} />
               </label>
-              <input name="newCategory" value={l.suggestedCategory ?? ''} placeholder="New category name" aria-label="New category name" class={field} />
+              <input name="newCategory" value={l.suggestedCategory ?? ''} placeholder="New subcategory name" aria-label="New subcategory name" class={field} />
+              <select name="newCategoryParent" aria-label="Parent for the new subcategory" class={field}>
+                <option value="">Parent…</option>
+                {tree.map((p) => <option value={p.id}>{p.name}</option>)}
+              </select>
               <label class="text-xs text-slate-600">Town<br />
                 <select name="townId" class={field}>
                   {towns.map((t) => <option value={t.id} selected={t.id === l.townId}>{t.name}</option>)}

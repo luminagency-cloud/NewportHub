@@ -1,6 +1,6 @@
 {
   "name": "newporthub",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -12,7 +12,10 @@
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "seed:local": "tsx scripts/seed-outscraper.ts --local",
     "seed:remote": "tsx scripts/seed-outscraper.ts --remote",
-    "test": "tsx --test src/lib/*.test.ts"
+    "test": "tsx --test src/lib/*.test.ts",
+    "seed:categories:local": "tsx scripts/seed-categories.ts --local",
+    "seed:categories:remote": "tsx scripts/seed-categories.ts --remote",
+    "outscraper:queries": "tsx scripts/outscraper-queries.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.4.0",

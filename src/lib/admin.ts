@@ -1,5 +1,6 @@
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 import { categories, claims, listings, pendingEdits, towns, type ListingChanges } from '../db/schema';
+import { refreshBreakouts } from './categories';
 import { db } from './db';
 import { deleteMedia } from './media';
 import { RESERVED_SLUGS, slugify } from './slug';
@@ -40,14 +41,19 @@ export async function lookups() {
 
 type Result = { ok: string } | { error: string };
 
-/** Find or create a category/town by name. Creation fails on a slug clash (DB trigger) or reserved route. */
-async function ensureCategory(name: string): Promise<{ id: number } | { error: string }> {
+/**
+ * Find a category by name, or create it as a subcategory of `parentId`. Creation fails on a slug
+ * clash (DB trigger) or a reserved route. New subcategories start without their own page.
+ */
+async function ensureCategory(name: string, parentId: number | null): Promise<{ id: number } | { error: string }> {
   const slug = slugify(name);
   if (!slug || RESERVED_SLUGS.has(slug)) return { error: `"${name}" cannot be used as a category name.` };
   const found = await db().select({ id: categories.id }).from(categories).where(eq(categories.slug, slug));
   if (found[0]) return found[0];
+  const parent = parentId ? (await db().select({ id: categories.id, parentId: categories.parentId }).from(categories).where(eq(categories.id, parentId)))[0] : undefined;
+  if (!parent || parent.parentId !== null) return { error: 'Choose the parent category for the new subcategory.' };
   try {
-    const [row] = await db().insert(categories).values({ slug, name }).returning({ id: categories.id });
+    const [row] = await db().insert(categories).values({ slug, name, parentId: parent.id }).returning({ id: categories.id });
     return row!;
   } catch {
     return { error: `Category "${name}" clashes with a town of the same name. Pick another name.` };
@@ -78,7 +84,7 @@ export async function approveListing(id: number, form: FormData): Promise<Result
 
   let categoryId = Number(form.get('categoryId')) || null;
   if (form.get('categoryId') === 'new') {
-    const r = await ensureCategory(String(form.get('newCategory') ?? '').trim());
+    const r = await ensureCategory(String(form.get('newCategory') ?? '').trim(), Number(form.get('newCategoryParent')) || null);
     if ('error' in r) return r;
     categoryId = r.id;
   }
@@ -94,6 +100,7 @@ export async function approveListing(id: number, form: FormData): Promise<Result
     .update(listings)
     .set({ status: 'published', categoryId, townId, suggestedCategory: null, suggestedTown: null, updatedAt: new Date() })
     .where(eq(listings.id, id));
+  await refreshBreakouts();
   return { ok: `Published “${listing.name}”.` };
 }
 
@@ -156,6 +163,7 @@ export async function approveEdit(editId: number, adminId: string): Promise<Resu
     db().update(pendingEdits).set({ status: 'approved', reviewedBy: adminId, reviewedAt: now }).where(eq(pendingEdits.id, editId)),
   ]);
   if (changes.logoR2Key && changes.logoR2Key !== row.listing.logoR2Key) await deleteMedia(row.listing.logoR2Key);
+  if (changes.categoryId) await refreshBreakouts();
   return { ok: `Applied edit to “${row.listing.name}”.` };
 }
 

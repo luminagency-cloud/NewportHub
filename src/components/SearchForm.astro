@@ -1,8 +1,10 @@
 ---
-import type { Category, Town } from '../db/schema';
+import type { Town } from '../db/schema';
+import type { TreeParent } from '../lib/queries';
 
 interface Props {
-  categories: Category[];
+  /** Parents, each followed by its subcategories that have their own page. */
+  categories: TreeParent[];
   towns: Town[];
   q?: string;
   category?: string;
@@ -15,7 +17,12 @@ const field = 'rounded-md border border-slate-300 bg-white px-3 py-2';
   <input name="q" type="search" value={q} placeholder="What are you looking for?" aria-label="Search" class={`${field} flex-1`} />
   <select name="category" aria-label="Category" class={field}>
     <option value="">All categories</option>
-    {categories.map((c) => <option value={c.slug} selected={c.slug === category}>{c.name}</option>)}
+    {categories.map((p) => (
+      <>
+        <option value={p.slug} selected={p.slug === category}>{p.name}</option>
+        {p.subs.filter((s) => s.brokenOut).map((s) => <option value={s.slug} selected={s.slug === category}>{'\u00a0\u00a0\u00a0'}{s.name}</option>)}
+      </>
+    ))}
   </select>
   <select name="town" aria-label="Town" class={field}>
     <option value="">All towns</option>

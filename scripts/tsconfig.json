@@ -1,5 +1,18 @@
 {
   "extends": "astro/tsconfigs/strict",
-  "include": ["./**/*", "../src/db/**/*", "../src/lib/slug.ts", "../src/lib/hours-parse.ts"],
-  "compilerOptions": { "noUncheckedIndexedAccess": true, "types": ["node"], "noEmit": true }
+  "include": [
+    "./**/*",
+    "../src/db/**/*",
+    "../src/lib/slug.ts",
+    "../src/lib/hours-parse.ts",
+    "../src/lib/category-rules.ts",
+    "../src/data/**/*"
+  ],
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "types": [
+      "node"
+    ],
+    "noEmit": true
+  }
 }
