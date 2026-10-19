@@ -67,7 +67,9 @@ src/pages/admin/ads/           banner ad CRUD + stats
 src/pages/sitemap.xml.ts       sitemap (only pages with published listings)
 src/pages/robots.txt.ts        robots.txt
 public/og-default.png          1200×630 default social card (regenerate with PIL if the brand changes)
-scripts/seed-outscraper.ts     CSV import
+scripts/seed-outscraper.ts     Outscraper import (.xlsx or .csv)
+scripts/deploy.ts              production deploy (npm run deploy)
+scripts/wrangler.ts            runs wrangler through Node (works on Windows)
 scripts/seed-categories.ts     writes src/data/taxonomy.ts to D1 (adds only)
 scripts/outscraper-queries.ts  prints Outscraper queries (search terms × service towns)
 ```
@@ -247,7 +249,7 @@ npm install
 npm run db:migrate:local                  # create/upgrade local D1 (.wrangler/state)
 npm run seed:local                        # import data/sample-outscraper.csv
 npm run seed:categories:local            # category tree + aliases from src/data/taxonomy.ts (run before importing)
-npx tsx scripts/seed-outscraper.ts path/to/export.csv --local   # import a real Outscraper export
+npm run import:local -- path/to/export.xlsx   # import a real Outscraper export (.xlsx or .csv); import:remote for production
 npm run outscraper:queries                # Outscraper query list (add -- --test for the 4-query test)
 
 npm run dev                               # astro dev, http://localhost:4321 (uses local D1/R2)
@@ -267,15 +269,14 @@ Production is the Worker `newporthub` with Custom Domain newporthub.com (`routes
 `npx wrangler login` done:
 
 ```sh
-git pull && npm ci
-npx wrangler whoami                 # right account?
-npx wrangler secret list            # names only; see the Environment table
-npm run check && npm test
-npm run db:migrate:remote           # ALWAYS before deploying code that needs it
-npm run seed:categories:remote      # when src/data/taxonomy.ts changed (add-only, safe to re-run)
-npm run build && npx wrangler deploy
-curl -sI https://newporthub.com/ https://newporthub.com/sitemap.xml https://newporthub.com/robots.txt
+npm run deploy      # git pull, npm ci, then scripts/deploy.ts
 ```
+
+`scripts/deploy.ts` stops at the first failing step: Cloudflare login check → `npm run check` →
+`npm test` → remote migrations → remote category seed (add-only) → build → `wrangler deploy` →
+smoke test (`/`, `/sitemap.xml`, `/robots.txt` must return 200). Checks and tests run before
+anything remote changes. Stop `npm run dev`/`preview` first: on Windows `npm ci` cannot replace
+files they hold open. Secrets are not part of it (`npx wrangler secret list` shows names).
 
 - Migrations go first. Keep them additive (new tables/columns with constant defaults), so the code
   still running during the deploy keeps working. SQLite cannot add a column whose default is an
@@ -284,7 +285,7 @@ curl -sI https://newporthub.com/ https://newporthub.com/sitemap.xml https://newp
   not rolled back, which is why they must be additive.
 - Logs: `npx wrangler tail --format pretty`.
 - Secret changes redeploy the Worker by themselves; no build needed.
-- Never run `seed:remote` with `data/sample-outscraper.csv` (fictional data).
+- The importer refuses `data/sample-outscraper.csv` with `--remote` (fictional data).
 - First-ever setup (done 2026-10-18, kept for rebuilding from scratch): `npx wrangler d1 create
   newporthub` → id into `wrangler.toml`; `npx wrangler r2 bucket create newporthub-media`.
 
@@ -294,14 +295,14 @@ newporthub.com.
 
 ## Seed import (Outscraper)
 
-`scripts/seed-outscraper.ts` reads an Outscraper Google Maps CSV, writes `data/seed.sql`, and runs it
+`scripts/seed-outscraper.ts` (`npm run import:local|import:remote -- <file>`) reads an Outscraper Google Maps export (.xlsx as downloaded, or .csv), writes `data/seed.sql`, and runs it
 with `wrangler d1 execute`. Seed categories first. New listings: `status=published`, `tier=free`,
 unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running refreshes source
 fields **only on unclaimed listings**, so owner edits survive, and never touches tier, status, owner,
 or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing
 name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
 on `category`, then each `subtypes` entry, filed on that category's parent; no hit → row not imported, source category saved to
-`import_unmapped`. **Hours are not imported** (Basic has no hours). CSV only (export CSV from Outscraper, not XLSX). Columns read: `name,
+`import_unmapped`. **Hours are not imported** (Basic has no hours). Columns read: `name,
 place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
 email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.
 

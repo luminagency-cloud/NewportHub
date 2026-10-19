@@ -1,7 +1,7 @@
 /**
- * Import an Outscraper Google Maps CSV export into D1.
+ * Import an Outscraper Google Maps export (.xlsx or .csv) into D1.
  *
- *   npx tsx scripts/seed-outscraper.ts [file.csv] [--local | --remote]
+ *   npm run import:remote -- path/to/export.xlsx      (or import:local)
  *
  * Every imported listing is status=published, tier=free (Basic), unclaimed. Re-running is safe: rows
  * are matched on Outscraper's place_id; unclaimed listings get fresh source fields, and claimed
@@ -18,6 +18,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
+import { readSheet } from 'read-excel-file/node';
 import { SERVICE_STATE, SERVICE_TOWNS } from '../src/data/taxonomy';
 import { mapSourceCategory, REFRESH_BREAKOUTS_SQL } from '../src/lib/category-rules';
 import { slugify } from '../src/lib/slug';
@@ -25,8 +26,12 @@ import { wrangler } from './wrangler';
 
 const args = process.argv.slice(2);
 const target = args.includes('--remote') ? '--remote' : '--local';
-const csvPath = args.find((a) => !a.startsWith('--')) ?? 'data/sample-outscraper.csv';
+const inputPath = args.find((a) => !a.startsWith('--')) ?? 'data/sample-outscraper.csv';
 const outPath = 'data/seed.sql';
+if (target === '--remote' && inputPath.includes('sample-outscraper')) {
+  console.error('data/sample-outscraper.csv is fictional test data. Not importing it into production.');
+  process.exit(1);
+}
 
 type Row = Record<string, string | undefined>;
 
@@ -71,8 +76,17 @@ const q = (v: string | number | null | undefined) =>
 
 // ---- main ------------------------------------------------------------------
 
-const rows: Row[] = parse(readFileSync(csvPath), { columns: true, skip_empty_lines: true, bom: true, relax_column_count: true });
-console.log(`Read ${rows.length} rows from ${csvPath}`);
+/** Rows keyed by the header row. Outscraper's .xlsx has one sheet with headers in the first row. */
+async function readRows(path: string): Promise<Row[]> {
+  if (!/\.xlsx$/i.test(path)) return parse(readFileSync(path), { columns: true, skip_empty_lines: true, bom: true, relax_column_count: true });
+  const [header = [], ...data] = await readSheet(path);
+  const keys = header.map((h) => String(h ?? ''));
+  const text = (v: unknown) => (v === null || v === undefined ? undefined : v instanceof Date ? v.toISOString() : String(v));
+  return data.map((cells) => Object.fromEntries(keys.map((k, i) => [k, text(cells[i])])));
+}
+
+const rows = await readRows(inputPath);
+console.log(`Read ${rows.length} rows from ${inputPath}`);
 
 const aliasRows = d1Query<{ alias: string; category_id: number }>('SELECT alias, category_id FROM category_aliases');
 if (!aliasRows.length) {
