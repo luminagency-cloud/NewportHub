@@ -2,6 +2,12 @@
 
 Local business directory for Newport County, Rhode Island. Domain: newporthub.com.
 
+**Unfinished work lives in Linear only** (team Luminagency, key `LA`; NewportHub issues start with
+"NewportHub:"; the current umbrella issue is LA-187). Read the relevant issues before starting work.
+Do not keep a to-do list, roadmap, or "not built yet" notes in this repository. When work is done,
+update or close the Linear issue; when new work is found, add it there. If Linear cannot be reached,
+say so loudly and do not fall back to a file in the repo.
+
 ## Stack
 
 - **Astro 7** with `@astrojs/cloudflare` (v14). `output: 'server'`; a page opts into static output
@@ -85,7 +91,6 @@ scripts/seed-outscraper.ts     CSV import
   which does not work on D1; replace it with `PRAGMA defer_foreign_keys = on` and check the
   generated `INSERT … SELECT` (in 0002 it selected new columns from the old table). Test a rebuild
   migration on a seeded local DB before applying it remotely.
-- Not built yet: email notifications.
 
 ## Owners and moderation
 
@@ -161,7 +166,7 @@ scripts/seed-outscraper.ts     CSV import
 
 ### Testing billing locally with the Stripe CLI
 
-Not yet run end to end against real Stripe test mode; the steps follow the Stripe CLI docs.
+The steps follow the Stripe CLI docs.
 
 1. Test-mode keys in `.dev.vars`: `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_PRICE_FEATURED`,
    `STRIPE_PRICE_PREMIUM` (test-mode price or product ids). Leave `STRIPE_API_BASE` unset.
