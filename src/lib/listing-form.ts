@@ -1,5 +1,6 @@
-import type { Hours, ListingChanges } from '../db/schema';
+import { STATUSES, TIERS, type Hours, type ListingChanges } from '../db/schema';
 import { hoursFromForm } from './hours-parse';
+import { slugify } from './slug';
 
 export interface ListingFormValues {
   name: string;
@@ -103,4 +104,39 @@ export function diffChanges(current: Record<string, unknown>, next: ListingChang
     if (JSON.stringify(current[k] ?? null) !== JSON.stringify(next[k] ?? null)) out[k] = next[k] ?? null;
   }
   return out as ListingChanges;
+}
+
+export interface AdminFields {
+  status: (typeof STATUSES)[number];
+  tier: (typeof TIERS)[number];
+  /** Slugified; empty means "make one from the name". */
+  slug: string;
+  /** Raw owner field: a Clerk user id (user_…), an email address, or empty for no owner. */
+  owner: string;
+}
+
+/** The admin-only fields of the admin listing form (owner lookup happens in the page). */
+export function parseAdminFields(form: FormData): { values: AdminFields; errors: string[] } {
+  const errors: string[] = [];
+  const status = String(form.get('status') ?? '') as AdminFields['status'];
+  if (!STATUSES.includes(status)) errors.push('Choose a status.');
+  const tier = String(form.get('tier') ?? '') as AdminFields['tier'];
+  if (!TIERS.includes(tier)) errors.push('Choose a plan.');
+  const rawSlug = String(form.get('slug') ?? '').trim();
+  const slug = slugify(rawSlug);
+  if (rawSlug && !slug) errors.push('The URL name needs letters or numbers.');
+  const owner = String(form.get('owner') ?? '').trim();
+  if (owner && !/^user_[A-Za-z0-9]+$/.test(owner) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(owner))
+    errors.push('Owner must be an email address or a Clerk user id (user_…), or empty.');
+  return { values: { status, tier, slug, owner }, errors };
+}
+
+/** field → [before, after] for every key whose value differs (compared as JSON). */
+export function fieldChanges(current: Record<string, unknown>, next: Record<string, unknown>): Record<string, [unknown, unknown]> {
+  const out: Record<string, [unknown, unknown]> = {};
+  for (const [k, v] of Object.entries(next)) {
+    const before = current[k] ?? null;
+    if (JSON.stringify(before) !== JSON.stringify(v ?? null)) out[k] = [before, v ?? null];
+  }
+  return out;
 }

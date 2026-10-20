@@ -52,6 +52,8 @@ src/lib/auth.ts                isAdmin(), sessionUser() (Clerk user + verified e
 src/lib/verify.ts              email-domain claim verification
 src/lib/owner.ts               owner writes: claims, submissions, edits
 src/lib/admin.ts               moderation: approve/reject listings, claims, edits
+src/lib/admin-listings.ts      admin search/create/edit/delete of any listing, slug redirects, change log
+src/pages/admin/listings/      /admin/listings (search) and /admin/listings/<id|new> (every field, live at once)
 src/lib/listing-form.ts        shared listing form validation + diffChanges()
 src/lib/media.ts               logo upload to R2 (magic-byte check, PNG/JPEG/WebP, 1 MB)
 src/lib/billing.ts             Stripe: checkout, portal, webhook verify + handlers, syncSubscription()
@@ -144,6 +146,13 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 - **Logos:** a new R2 key per upload (`logos/<listingId>/<uuid>.<ext>`), so a pending logo never
   replaces the live one. Replaced or rejected logo objects are deleted from R2.
 - **Admin:** `ADMIN_USER_IDS` (comma-separated Clerk user ids). Non-admins get 404 on `/admin`.
+- **Admin edits** (`/admin/listings/<id>`) change every field at once, no review: status, plan, slug,
+  owner (email or Clerk user id; the person must have an account), logo. Status `hidden` takes a
+  listing off the site (the normal alternative to deleting); owners of hidden listings still edit
+  through review. A slug change keeps the old URL as a 301 (`slug_redirects`). Admin edits and
+  approved owner edits are logged in `listing_changes` (no FK, so the log outlives a deleted
+  listing). Delete is refused while a Stripe subscription is live. A plan set by hand is
+  overwritten by the next Stripe event if the listing has a subscription.
 
 ## Billing (Stripe)
 
@@ -299,11 +308,12 @@ newporthub.com.
 `scripts/seed-outscraper.ts` (`npm run import:local|import:remote -- <file>`) reads an Outscraper Google Maps export (.xlsx as downloaded, or .csv), writes `data/seed.sql`, and runs it
 with `wrangler d1 execute`. Seed categories first. New listings: `status=published`, `tier=free`,
 unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running refreshes source
-fields **only on unclaimed listings**, so owner edits survive, and never touches tier, status, owner,
+fields **only on unclaimed listings never edited in admin** (no `listing_changes` row), so owner and admin edits survive, and never touches tier, status, owner,
 or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing
 name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
 on `category`, then each `subtypes` entry, filed on that category's parent; no hit → row not imported, source category saved to
-`import_unmapped`. **Hours are not imported** (Basic has no hours). Columns read: `name,
+`import_unmapped`. **Hours are not imported** (Basic has no hours). Website is saved the way the form saves it (no trailing slash on a bare domain); `about` is used as
+the description only when it is prose (Outscraper usually puts JSON there). Columns read: `name,
 place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
 email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.
 

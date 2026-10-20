@@ -39,8 +39,8 @@ function planNote(l: (typeof owned)[number]): string | null {
   return null;
 }
 const notice = NOTICES[Astro.url.searchParams.get('done') ?? ''];
-const statusLabel: Record<string, string> = { pending: 'Waiting for review', published: 'Live', rejected: 'Not approved' };
-const badge: Record<string, string> = { pending: 'bg-amber-100 text-amber-900', published: 'bg-green-100 text-green-900', approved: 'bg-green-100 text-green-900', rejected: 'bg-red-100 text-red-900' };
+const statusLabel: Record<string, string> = { pending: 'Waiting for review', published: 'Live', rejected: 'Not approved', hidden: 'Hidden by NewportHub' };
+const badge: Record<string, string> = { pending: 'bg-amber-100 text-amber-900', published: 'bg-green-100 text-green-900', approved: 'bg-green-100 text-green-900', rejected: 'bg-red-100 text-red-900', hidden: 'bg-slate-200 text-slate-800' };
 ---
 <Base title="My listings" noindex>
   <div class="mb-6 flex flex-wrap items-center justify-between gap-4">

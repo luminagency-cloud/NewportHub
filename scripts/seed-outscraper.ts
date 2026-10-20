@@ -4,8 +4,8 @@
  *   npm run import:remote -- path/to/export.xlsx      (or import:local)
  *
  * Every imported listing is status=published, tier=free (Basic), unclaimed. Re-running is safe: rows
- * are matched on Outscraper's place_id; unclaimed listings get fresh source fields, and claimed
- * listings are left alone so owner edits survive. Tier, status, owner, and Stripe fields are never
+ * are matched on Outscraper's place_id; unclaimed listings get fresh source fields, and claimed or
+ * admin-edited listings are left alone so those edits survive. Tier, status, owner, and Stripe fields are never
  * touched.
  *
  * Categories come from the alias table (seed it first: npm run seed:categories:local); a subcategory
@@ -69,6 +69,23 @@ function d1Query<T>(sql: string): T[] {
     stdio: ['ignore', 'pipe', 'inherit'],
   }) as string;
   return (JSON.parse(out) as { results: T[] }[])[0]?.results ?? [];
+}
+
+/** Same form as the listing form saves (bare domains without a trailing slash), so owner edits do not show a spurious change. */
+function website(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    return u.pathname === '/' && !u.search && !u.hash ? u.origin : u.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Outscraper's `about` is usually structured JSON (amenities, accessibility), not prose: skip it then. */
+function description(row: Row): string | null {
+  const text = val(row, 'description') ?? val(row, 'about');
+  return text && !/^[[{]/.test(text) ? text : null;
 }
 
 const q = (v: string | number | null | undefined) =>
@@ -152,22 +169,23 @@ for (const [i, row] of rows.entries()) {
     town_id: `(SELECT id FROM towns WHERE slug = ${q(slugify(town))})`,
     address: q(val(row, 'full_address', 'address')),
     phone: q(val(row, 'phone', 'phone_1')),
-    website: q(val(row, 'site', 'website')),
+    website: q(website(val(row, 'site', 'website'))),
     email: q(val(row, 'email', 'email_1')),
-    description: q(val(row, 'description', 'about')),
+    description: q(description(row)),
     lat: Number.isFinite(lat) && lat !== 0 ? String(lat) : 'NULL',
     lng: Number.isFinite(lng) && lng !== 0 ? String(lng) : 'NULL',
     source_place_id: q(placeId),
   };
   const cols = Object.keys(fields);
-  // Source fields only, and only while unclaimed: an owner's edits are never overwritten.
+  // Source fields only, and only while unclaimed and never edited by the admin: owner and admin
+  // edits are never overwritten.
   const refresh = cols
     .filter((c) => !['slug', 'source_place_id'].includes(c))
     .map((c) => `${c} = excluded.${c}`)
     .concat('updated_at = unixepoch()')
     .join(', ');
   const conflict = placeId
-    ? `ON CONFLICT(source_place_id) DO UPDATE SET ${refresh} WHERE listings.owner_user_id IS NULL`
+    ? `ON CONFLICT(source_place_id) DO UPDATE SET ${refresh} WHERE listings.owner_user_id IS NULL AND NOT EXISTS (SELECT 1 FROM listing_changes c WHERE c.listing_id = listings.id)`
     : 'ON CONFLICT(slug) DO NOTHING';
   statements.push(`INSERT INTO listings (${cols.join(', ')}, status, tier) VALUES (${Object.values(fields).join(', ')}, 'published', 'free') ${conflict};`);
 }

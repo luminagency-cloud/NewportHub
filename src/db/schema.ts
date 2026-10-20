@@ -7,7 +7,8 @@ export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
 export type Weekday = (typeof WEEKDAYS)[number];
 
 export const TIERS = ['free', 'featured', 'premium'] as const;
-export const STATUSES = ['pending', 'published', 'rejected'] as const;
+/** hidden: taken off the site by the admin (the normal alternative to deleting). */
+export const STATUSES = ['pending', 'published', 'rejected', 'hidden'] as const;
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export const CLAIM_METHODS = ['email_domain', 'manual'] as const;
 
@@ -179,6 +180,33 @@ export const pendingEdits = sqliteTable(
     index('pending_edits_status_idx').on(t.status),
     uniqueIndex('pending_edits_one_open_per_listing').on(t.listingId).where(sql`status = 'pending'`),
   ],
+);
+
+/** Old listing slugs, so a renamed listing's old URL 301-redirects to the current one. */
+export const slugRedirects = sqliteTable('slug_redirects', {
+  oldSlug: text('old_slug').primaryKey(),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  createdAt: timestamps.createdAt,
+});
+
+/**
+ * Who changed a listing, what, and when: admin edits and approved owner edits. No foreign key, so
+ * the history survives a deleted listing.
+ */
+export const listingChanges = sqliteTable(
+  'listing_changes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    listingId: integer('listing_id').notNull(),
+    userId: text('user_id').notNull(),
+    userEmail: text('user_email'),
+    /** e.g. "admin edit", "owner edit approved", "created by admin", "deleted". */
+    action: text('action').notNull(),
+    /** field → [before, after] */
+    changes: text('changes', { mode: 'json' }).$type<Record<string, [unknown, unknown]>>().notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index('listing_changes_listing_idx').on(t.listingId, t.createdAt)],
 );
 
 export type Category = typeof categories.$inferSelect;

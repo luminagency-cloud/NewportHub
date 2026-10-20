@@ -3,9 +3,15 @@ import Base from '../../../layouts/Base.astro';
 import { getPublishedListing } from '../../../lib/queries';
 import { categoryLink } from '../../../lib/category-rules';
 import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
+import { redirectedSlug } from '../../../lib/admin-listings';
+import { isAdmin } from '../../../lib/auth';
 
 const row = await getPublishedListing(Astro.params.slug!);
-if (!row) return new Response(null, { status: 404 });
+if (!row) {
+  // A renamed listing keeps its old address.
+  const moved = await redirectedSlug(Astro.params.slug!);
+  return moved ? Astro.redirect(`/listing/${moved}`, 301) : new Response(null, { status: 404 });
+}
 const { listing: l, category, parent, town } = row;
 // Breadcrumb goes through the parent; the subcategory gets its own crumb only once it has a page.
 const catPage = categoryLink({ ...category, parentSlug: parent?.slug ?? null, parentName: parent?.name ?? null });
@@ -91,4 +97,5 @@ const { userId } = Astro.locals.auth();
   ) : !l.ownerUserId && (
     <p class="mt-6 text-sm text-slate-600">Is this your business? <a href={`/listing/${l.slug}/claim`} class="font-medium text-sky-700 hover:underline">Claim this listing</a> to keep its details up to date.</p>
   )}
+  {isAdmin(userId) && <p class="mt-2 text-sm"><a href={`/admin/listings/${l.id}`} class="font-medium text-sky-700 hover:underline">Edit in admin</a></p>}
 </Base>

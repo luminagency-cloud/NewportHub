@@ -11,7 +11,8 @@ const listing = await getListing(Number(Astro.params.id));
 if (!listing || listing.ownerUserId !== user.id) return new Response(null, { status: 404 });
 
 const opts = await formOptions(listing.categoryId);
-const published = listing.status === 'published';
+// Published and hidden listings only change through review; pending and rejected ones change directly.
+const published = listing.status === 'published' || listing.status === 'hidden';
 const pending = published ? await openEdit(listing.id) : undefined;
 // Show the owner their unreviewed edit, not the live values, so they can keep working on it.
 let values: Partial<ListingFormValues> = { ...listing, ...(pending?.changes ?? {}) };
@@ -36,7 +37,9 @@ const logoKey = pending?.changes.logoR2Key ?? listing.logoR2Key;
   {published ? (
     <p class="mb-6 text-slate-600">
       Changes are reviewed before they go live. {pending && <strong>You have changes waiting for review; saving again replaces them.</strong>}
-      {' '}<a href={`/listing/${listing.slug}`} class="text-sky-700 hover:underline">View live listing</a>
+      {listing.status === 'hidden'
+        ? <strong>This listing is hidden from the site by NewportHub.</strong>
+        : <>{' '}<a href={`/listing/${listing.slug}`} class="text-sky-700 hover:underline">View live listing</a></>}
     </p>
   ) : (
     <p class="mb-6 text-slate-600">This listing is not live yet. Saving sends it for review again.</p>

@@ -1,0 +1,114 @@
+---
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import { isAdmin } from '../../../lib/auth';
+import { ADMIN_PAGE_SIZE, searchAdminListings } from '../../../lib/admin-listings';
+import { allTowns, categoryTree } from '../../../lib/queries';
+import { STATUSES, TIERS } from '../../../db/schema';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const p = Astro.url.searchParams;
+const filters = {
+  q: (p.get('q') ?? '').slice(0, 100),
+  status: STATUSES.find((s) => s === p.get('status')),
+  tier: TIERS.find((t) => t === p.get('tier')),
+  townId: Number(p.get('town')) || undefined,
+  categoryId: Number(p.get('category')) || undefined,
+  owned: p.get('owned') === 'yes' ? ('yes' as const) : p.get('owned') === 'no' ? ('no' as const) : undefined,
+  page: Math.max(1, Number(p.get('page')) || 1),
+};
+const [{ rows, total }, tree, towns] = await Promise.all([searchAdminListings(filters), categoryTree(), allTowns()]);
+const pages = Math.max(1, Math.ceil(total / ADMIN_PAGE_SIZE));
+const pageUrl = (n: number) => {
+  const u = new URL(Astro.url);
+  u.searchParams.set('page', String(n));
+  return `${u.pathname}${u.search}`;
+};
+const msg = p.get('msg');
+const field = 'rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm';
+const statusBadge: Record<string, string> = {
+  published: 'bg-green-100 text-green-900', pending: 'bg-amber-100 text-amber-900', rejected: 'bg-red-100 text-red-900', hidden: 'bg-slate-200 text-slate-800',
+};
+---
+<Base title="Businesses" noindex>
+  <AdminNav current="listings" />
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-bold">Businesses</h1>
+    <a href="/admin/listings/new" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800">Add a business</a>
+  </div>
+  {msg && <p class="mb-4 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+
+  <form method="get" class="mb-4 flex flex-wrap items-end gap-2">
+    <label class="text-xs text-slate-600">Name, phone, address<br /><input name="q" value={filters.q} class={`${field} w-64`} /></label>
+    <label class="text-xs text-slate-600">Category<br />
+      <select name="category" class={field}>
+        <option value="">Any</option>
+        {tree.map((c) => (
+          <>
+            <option value={c.id} selected={c.id === filters.categoryId}>{c.name}</option>
+            {c.subs.map((s) => <option value={s.id} selected={s.id === filters.categoryId}>{'   — '}{s.name}</option>)}
+          </>
+        ))}
+      </select>
+    </label>
+    <label class="text-xs text-slate-600">Town<br />
+      <select name="town" class={field}>
+        <option value="">Any</option>
+        {towns.map((t) => <option value={t.id} selected={t.id === filters.townId}>{t.name}</option>)}
+      </select>
+    </label>
+    <label class="text-xs text-slate-600">Status<br />
+      <select name="status" class={field}>
+        <option value="">Any</option>
+        {STATUSES.map((s) => <option value={s} selected={s === filters.status}>{s}</option>)}
+      </select>
+    </label>
+    <label class="text-xs text-slate-600">Plan<br />
+      <select name="tier" class={field}>
+        <option value="">Any</option>
+        {TIERS.map((t) => <option value={t} selected={t === filters.tier}>{t}</option>)}
+      </select>
+    </label>
+    <label class="text-xs text-slate-600">Owner<br />
+      <select name="owned" class={field}>
+        <option value="">Any</option>
+        <option value="yes" selected={filters.owned === 'yes'}>Claimed</option>
+        <option value="no" selected={filters.owned === 'no'}>Unclaimed</option>
+      </select>
+    </label>
+    <button class="rounded-md bg-slate-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-900">Filter</button>
+    <a href="/admin/listings" class="px-2 py-1.5 text-sm text-sky-700 hover:underline">Clear</a>
+  </form>
+
+  <p class="mb-2 text-sm text-slate-500">{total} {total === 1 ? 'business' : 'businesses'}</p>
+  <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-slate-50 text-xs text-slate-500">
+        <tr><th class="px-3 py-2">Name</th><th class="px-3 py-2">Category</th><th class="px-3 py-2">Town</th><th class="px-3 py-2">Phone</th><th class="px-3 py-2">Status</th><th class="px-3 py-2">Plan</th><th class="px-3 py-2">Owner</th></tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr class="border-t border-slate-100">
+            <td class="px-3 py-2"><a href={`/admin/listings/${r.id}`} class="font-medium text-sky-700 hover:underline">{r.name}</a></td>
+            <td class="px-3 py-2 text-slate-600">{r.categoryName ? (r.parentName ? `${r.categoryName} (${r.parentName})` : r.categoryName) : <span class="text-amber-800">New: {r.suggestedCategory}</span>}</td>
+            <td class="px-3 py-2 text-slate-600">{r.townName ?? <span class="text-amber-800">New: {r.suggestedTown}</span>}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{r.phone ?? '—'}</td>
+            <td class="px-3 py-2"><span class={`rounded px-2 py-0.5 text-xs ${statusBadge[r.status]}`}>{r.status}</span></td>
+            <td class="px-3 py-2 text-slate-600">{r.tier}</td>
+            <td class="px-3 py-2 text-slate-600">{r.ownerUserId ? 'Claimed' : '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    {rows.length === 0 && <p class="p-4 text-sm text-slate-500">No businesses match.</p>}
+  </div>
+  {pages > 1 && (
+    <nav class="mt-4 flex items-center gap-3 text-sm" aria-label="Pages">
+      {filters.page > 1 && <a href={pageUrl(filters.page - 1)} class="text-sky-700 hover:underline">← Previous</a>}
+      <span class="text-slate-500">Page {filters.page} of {pages}</span>
+      {filters.page < pages && <a href={pageUrl(filters.page + 1)} class="text-sky-700 hover:underline">Next →</a>}
+    </nav>
+  )}
+</Base>

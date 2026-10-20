@@ -1,0 +1,154 @@
+---
+// Admin add/edit for any business (/admin/listings/new or /admin/listings/<id>). Changes go live at once.
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import ListingForm from '../../../components/ListingForm.astro';
+import { isAdmin, resolveOwner, sessionUser, userEmail } from '../../../lib/auth';
+import { adminListingDetail, deleteAdminListing, saveAdminListing } from '../../../lib/admin-listings';
+import { parseAdminFields, parseListingForm, type AdminFields, type ListingFormValues } from '../../../lib/listing-form';
+import { allTowns, categoryTree } from '../../../lib/queries';
+import { STATUSES, TIERS } from '../../../db/schema';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const isNew = Astro.params.id === 'new';
+const detail = isNew ? undefined : await adminListingDetail(Number(Astro.params.id));
+if (!isNew && !detail) return new Response(null, { status: 404 });
+const listing = detail?.listing;
+
+const [tree, towns] = await Promise.all([categoryTree(), allTowns()]);
+const categoryIds = new Set(tree.flatMap((p) => [p.id, ...p.subs.map((s) => s.id)]));
+const townIds = new Set(towns.map((t) => t.id));
+
+let values: Partial<ListingFormValues> = listing ?? {};
+let admin: AdminFields = {
+  status: listing?.status ?? 'published',
+  tier: listing?.tier ?? 'free',
+  slug: listing?.slug ?? '',
+  owner: (await userEmail(Astro, listing?.ownerUserId ?? null)) ?? listing?.ownerUserId ?? '',
+};
+let errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const user = (await sessionUser(Astro))!;
+  const actor = { id: user.id, email: user.email };
+  if (form.get('action') === 'delete' && listing) {
+    if (form.get('confirm') !== 'yes') errors = ['Tick the box to confirm deleting this business.'];
+    else {
+      const r = await deleteAdminListing(listing.id, actor);
+      if ('ok' in r) return Astro.redirect(`/admin/listings?msg=${encodeURIComponent(r.ok)}`, 303);
+      errors = [r.error];
+    }
+  } else {
+    const parsed = parseListingForm(form, { categoryIds, townIds, allowSuggestions: false });
+    const extra = parseAdminFields(form);
+    values = parsed.values;
+    admin = extra.values;
+    errors = [...parsed.errors, ...extra.errors];
+    if (!errors.length) {
+      const owner = await resolveOwner(Astro, extra.values.owner);
+      if ('error' in owner) errors = [owner.error];
+      else {
+        const r = await saveAdminListing(listing?.id ?? null, parsed.values, { ...extra.values, ownerUserId: owner.id }, form.get('logo'), form.get('removeLogo') === 'yes', actor);
+        if ('error' in r) errors = [r.error];
+        else {
+          const msg = r.logoError ? `Saved, but the logo was not: ${r.logoError}` : isNew ? 'Business added.' : r.changed ? 'Saved.' : 'Nothing changed.';
+          return Astro.redirect(`/admin/listings/${r.id}?msg=${encodeURIComponent(msg)}`, 303);
+        }
+      }
+    }
+  }
+}
+
+const msg = Astro.url.searchParams.get('msg');
+const field = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
+const label = 'block text-sm font-medium text-slate-700';
+const liveSub = listing?.stripeSubscriptionId && ['active', 'trialing', 'past_due'].includes(listing.subscriptionStatus ?? '');
+const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+---
+<Base title={isNew ? 'Add a business' : `Edit ${listing!.name}`} noindex>
+  <AdminNav current="listings" />
+  <p class="mb-2 text-sm"><a href="/admin/listings" class="text-sky-700 hover:underline">← Businesses</a></p>
+  <h1 class="mb-2 text-2xl font-bold">{isNew ? 'Add a business' : listing!.name}</h1>
+  {listing && (
+    <p class="mb-4 text-sm text-slate-600">
+      {listing.status === 'published' ? <a href={`/listing/${listing.slug}`} class="text-sky-700 hover:underline" target="_blank">View on site</a> : <span>Not on the site ({listing.status}).</span>}
+      {' '}· Changes here go live immediately.
+    </p>
+  )}
+  {msg && <p class="mb-4 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+  {detail?.hasOpenEdit && <p class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">The owner has an edit waiting in <a href="/admin" class="underline">Moderation</a>. Approving it later applies the owner’s values over yours.</p>}
+  {detail && detail.openClaims > 0 && <p class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{detail.openClaims} open claim(s) in <a href="/admin" class="underline">Moderation</a>.</p>}
+
+  <ListingForm categories={tree} towns={towns} values={values} logoKey={listing?.logoR2Key} errors={errors} submitLabel={isNew ? 'Add business' : 'Save changes'}>
+    <fieldset slot="top" class="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+      <legend class="px-1 text-sm font-semibold text-slate-700">Admin</legend>
+      <label class={label}>Status
+        <select name="status" class={field}>
+          {STATUSES.map((s) => <option value={s} selected={s === admin.status}>{s}</option>)}
+        </select>
+      </label>
+      <label class={label}>Plan
+        <select name="tier" class={field}>
+          {TIERS.map((t) => <option value={t} selected={t === admin.tier}>{t}</option>)}
+        </select>
+        {liveSub && <span class="mt-1 block text-xs font-normal text-amber-800">Has a Stripe subscription ({listing!.subscriptionStatus}). The next Stripe event resets the plan to match it.</span>}
+      </label>
+      <label class={label}>URL name <span class="font-normal text-slate-500">(/listing/…; empty = from the name)</span>
+        <input name="slug" value={admin.slug} maxlength="120" class={field} />
+        {listing && <span class="mt-1 block text-xs font-normal text-slate-500">Changing it keeps the old address working (301).</span>}
+      </label>
+      <label class={label}>Owner <span class="font-normal text-slate-500">(email or Clerk user id; empty = unclaimed)</span>
+        <input name="owner" value={admin.owner} maxlength="200" class={field} />
+        <span class="mt-1 block text-xs font-normal text-slate-500">The owner must have a NewportHub account.</span>
+      </label>
+    </fieldset>
+    {listing?.logoR2Key && (
+      <label slot="logo" class="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" name="removeLogo" value="yes" /> Remove logo</label>
+    )}
+  </ListingForm>
+
+  {detail && (
+    <>
+      {detail.redirects.length > 0 && <p class="mt-8 text-sm text-slate-600">Old addresses that redirect here: {detail.redirects.map((s) => `/listing/${s}`).join(', ')}</p>}
+
+      <section class="mt-10">
+        <h2 class="mb-3 text-lg font-semibold">Change history</h2>
+        {detail.history.length === 0 ? <p class="text-sm text-slate-500">No recorded changes yet.</p> : (
+          <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table class="w-full table-fixed text-left text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-500"><tr><th class="w-40 px-3 py-2">When</th><th class="w-56 px-3 py-2">Who</th><th class="px-3 py-2">What</th></tr></thead>
+              <tbody>
+                {detail.history.map((h) => (
+                  <tr class="border-t border-slate-100 align-top">
+                    <td class="px-3 py-2 text-slate-600">{h.createdAt.toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })}</td>
+                    <td class="break-words px-3 py-2 text-slate-600">{h.userEmail ?? h.userId}<br /><span class="text-xs text-slate-400">{h.action}</span></td>
+                    <td class="px-3 py-2">
+                      <ul class="space-y-0.5">
+                        {Object.entries(h.changes).map(([k, [before, after]]) => (
+                          <li class="break-words"><span class="text-slate-500">{k}:</span> <span class="text-slate-400 line-through">{show(before)}</span> → {show(after)}</li>
+                        ))}
+                      </ul>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section class="mt-10 rounded-lg border border-red-200 bg-red-50 p-4">
+        <h2 class="mb-1 font-semibold text-red-900">Delete this business</h2>
+        <p class="mb-3 text-sm text-red-900">Permanent: removes the listing, its claims and pending edits, and its logo. To take it off the site but keep it, set the status to <em>hidden</em> instead.</p>
+        <form method="post" class="flex flex-wrap items-center gap-3">
+          <input type="hidden" name="action" value="delete" />
+          <label class="flex items-center gap-2 text-sm text-red-900"><input type="checkbox" name="confirm" value="yes" /> Yes, delete permanently</label>
+          <button class="rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100">Delete</button>
+        </form>
+      </section>
+    </>
+  )}
+</Base>
