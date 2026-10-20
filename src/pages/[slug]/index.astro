@@ -4,14 +4,20 @@
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
 import BannerAd from '../../components/BannerAd.astro';
-import { allTowns, categoryTree, filterFor, getCategory, getTown, parentIdsInTown, searchListings } from '../../lib/queries';
+import { allTowns, categoryTree, filterFor, getCategory, getTown, parentIdsInTown, retiredTarget, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
 const slug = Astro.params.slug!;
 const page = pageParam(Astro.url);
 const found = await getCategory(slug);
 const town = found ? undefined : await getTown(slug);
-if (!found && !town) return new Response(null, { status: 404 });
+if (!found && !town) {
+  // Renamed, merged, or deleted in admin: the old URL follows it.
+  const moved = await retiredTarget(slug);
+  const to = moved?.category ?? moved?.town;
+  if (to) return Astro.redirect(`/${to}/${Astro.url.search}`, 301);
+  return new Response(null, { status: 404 });
+}
 
 const category = found?.category;
 const parent = found?.parent ?? null;

@@ -190,6 +190,18 @@ export const slugRedirects = sqliteTable('slug_redirects', {
 });
 
 /**
+ * Category and town slugs no longer in use (renamed, merged, or deleted in admin). A row with a
+ * target 301-redirects there; one without (a deleted parent or town) is a 404. The seed and import
+ * scripts never re-create a retired slug, so admin changes survive a re-run.
+ */
+export const retiredSlugs = sqliteTable('retired_slugs', {
+  slug: text('slug').primaryKey(),
+  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  townId: integer('town_id').references(() => towns.id, { onDelete: 'set null' }),
+  createdAt: timestamps.createdAt,
+});
+
+/**
  * Who changed a listing, what, and when: admin edits and approved owner edits. No foreign key, so
  * the history survives a deleted listing.
  */

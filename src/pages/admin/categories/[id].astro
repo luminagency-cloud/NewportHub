@@ -1,0 +1,165 @@
+---
+// Add (/admin/categories/new[?parent=<id>]) or edit a category: name, URL name, intro text, parent,
+// import aliases, merge, delete. Changes go live at once; old URLs keep working (301).
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import CategorySelect from '../../../components/CategorySelect.astro';
+import { isAdmin } from '../../../lib/auth';
+import { categoryDetail, deleteAlias, deleteCategory, mergeCategory, saveAlias, saveCategory } from '../../../lib/admin-taxonomy';
+import { categoryTree } from '../../../lib/queries';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const isNew = Astro.params.id === 'new';
+const id = isNew ? null : Number(Astro.params.id);
+let detail = id ? await categoryDetail(id) : undefined;
+if (!isNew && !detail) return new Response(null, { status: 404 });
+
+let values = {
+  name: detail?.category.name ?? '',
+  slug: detail?.category.slug ?? '',
+  description: detail?.category.description ?? '',
+  parentId: detail ? detail.category.parentId : Number(Astro.url.searchParams.get('parent')) || null,
+};
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = form.get('action');
+  const back = (msg: string, to = `/admin/categories/${id}`) => Astro.redirect(`${to}?msg=${encodeURIComponent(msg)}`, 303);
+  if (action === 'save') {
+    const r = await saveCategory(id, form);
+    if ('ok' in r) return back(r.ok, `/admin/categories/${r.id}`);
+    error = r.error;
+    values = { name: String(form.get('name') ?? ''), slug: String(form.get('slug') ?? ''), description: String(form.get('description') ?? ''), parentId: Number(form.get('parentId')) || null };
+  } else if (id && action === 'addAlias') {
+    const r = await saveAlias(String(form.get('alias') ?? ''), id);
+    if ('ok' in r) return back(r.ok);
+    error = r.error;
+  } else if (id && action === 'deleteAlias') {
+    return back((await deleteAlias(String(form.get('alias') ?? ''))).ok);
+  } else if (id && action === 'merge') {
+    if (form.get('confirm') !== 'yes') error = 'Tick the box to confirm the merge.';
+    else {
+      const r = await mergeCategory(id, Number(form.get('intoId')));
+      if ('ok' in r) return back(r.ok, '/admin/categories');
+      error = r.error;
+    }
+  } else if (id && action === 'delete') {
+    const r = await deleteCategory(id);
+    if ('ok' in r) return back(r.ok, '/admin/categories');
+    error = r.error;
+  }
+}
+
+const tree = await categoryTree();
+const parents = tree.filter((p) => p.id !== id);
+// Merge targets: everything but this category (merging is offered only without subcategories).
+const others = parents.map((p) => ({ ...p, subs: p.subs.filter((s) => s.id !== id) }));
+const msg = Astro.url.searchParams.get('msg');
+const c = detail?.category;
+const isParent = c ? c.parentId === null : !values.parentId;
+const field = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
+const label = 'block text-sm font-medium text-slate-700';
+const counts = detail ? Object.entries(detail.listingCounts).map(([s, n]) => `${n} ${s}`).join(', ') : '';
+---
+<Base title={c ? `Category: ${c.name}` : 'Add a category'} noindex>
+  <AdminNav current="categories" />
+  <p class="mb-2 text-sm"><a href="/admin/categories" class="text-sky-700 hover:underline">← Categories</a></p>
+  <h1 class="mb-2 text-2xl font-bold">{c ? c.name : 'Add a category'}</h1>
+  {c && detail && (
+    <p class="mb-4 text-sm text-slate-600">
+      {isParent ? 'Top-level category' : <>Subcategory of <a href={`/admin/categories/${detail.parent!.id}`} class="text-sky-700 hover:underline">{detail.parent!.name}</a>{c.brokenOut ? ', has its own page' : ', shown on the parent page'}</>}
+      {' '}· <a href={`/${c.slug}/`} class="text-sky-700 hover:underline" target="_blank">/{c.slug}/</a>
+      {' '}· {detail.listingTotal ? <a href={`/admin/listings?category=${c.id}`} class="text-sky-700 hover:underline">{counts}</a> : 'no businesses'}
+    </p>
+  )}
+  {msg && <p class="mb-4 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+  {error && <p class="mb-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900" role="alert">{error}</p>}
+
+  <form method="post" class="grid max-w-2xl gap-4 rounded-lg border border-slate-200 bg-white p-4">
+    <input type="hidden" name="action" value="save" />
+    <label class={label}>Name
+      <input name="name" value={values.name} required maxlength="80" class={field} />
+    </label>
+    <label class={label}>URL name <span class="font-normal text-slate-500">(/…/; empty = from the name)</span>
+      <input name="slug" value={values.slug} maxlength="80" class={field} />
+      {c && <span class="mt-1 block text-xs font-normal text-slate-500">Changing it keeps the old address working (301). Renaming alone does not change the URL.</span>}
+    </label>
+    <label class={label}>Parent
+      {detail?.subs.length ? (
+        <span class="mt-1 block text-sm font-normal text-slate-600">Top level (it has subcategories, so it stays a parent).<input type="hidden" name="parentId" value="" /></span>
+      ) : (
+        <select name="parentId" class={field}>
+          <option value="">— None: a top-level category with its own page</option>
+          {parents.map((p) => <option value={p.id} selected={p.id === values.parentId}>{p.name}</option>)}
+        </select>
+      )}
+    </label>
+    <label class={label}>Intro text <span class="font-normal text-slate-500">(optional; shown under the heading and used as the search description)</span>
+      <textarea name="description" rows="3" maxlength="500" class={field}>{values.description}</textarea>
+    </label>
+    <div><button class="rounded-md bg-sky-700 px-4 py-2 font-medium text-white hover:bg-sky-800">{c ? 'Save changes' : 'Add category'}</button></div>
+  </form>
+
+  {c && detail && (
+    <>
+      {detail.subs.length > 0 && (
+        <section class="mt-8 text-sm">
+          <h2 class="mb-2 text-lg font-semibold">Subcategories</h2>
+          <ul class="flex flex-wrap gap-2">{detail.subs.map((s) => <li><a href={`/admin/categories/${s.id}`} class="rounded-full border border-slate-300 bg-white px-3 py-1 hover:border-sky-400">{s.name}</a></li>)}</ul>
+        </section>
+      )}
+
+      <section class="mt-8 max-w-2xl text-sm">
+        <h2 class="mb-1 text-lg font-semibold">Import categories</h2>
+        <p class="mb-3 text-slate-600">Outscraper categories that file into this one. Imports always file on the parent, so on a subcategory these only steer which parent.</p>
+        {detail.aliases.length === 0 ? <p class="mb-3 text-slate-500">None.</p> : (
+          <ul class="mb-3 flex flex-wrap gap-2">
+            {detail.aliases.map((a) => (
+              <li class="flex items-center gap-1 rounded-full border border-slate-300 bg-white py-0.5 pl-3 pr-1">
+                {a}
+                <form method="post"><input type="hidden" name="action" value="deleteAlias" /><input type="hidden" name="alias" value={a} /><button class="rounded-full px-1.5 text-slate-400 hover:bg-red-50 hover:text-red-700" aria-label={`Remove ${a}`}>×</button></form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form method="post" class="flex flex-wrap gap-2">
+          <input type="hidden" name="action" value="addAlias" />
+          <input name="alias" placeholder="e.g. Sushi restaurant" maxlength="120" required class="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5" aria-label="Import category" />
+          <button class="rounded-md bg-slate-800 px-3 py-1.5 font-medium text-white hover:bg-slate-900">Add</button>
+        </form>
+        <p class="mt-1 text-xs text-slate-500">An import category already filed elsewhere moves here.</p>
+      </section>
+
+      {detail.redirects.length > 0 && <p class="mt-8 text-sm text-slate-600">Old addresses that redirect here: {detail.redirects.map((s) => `/${s}/`).join(', ')}</p>}
+
+      <section class="mt-10 grid max-w-2xl gap-4 text-sm">
+        <h2 class="text-lg font-semibold">Merge or delete</h2>
+        {detail.subs.length > 0 ? (
+          <p class="text-slate-600">A category with subcategories cannot be merged or deleted. Move or merge its subcategories first.</p>
+        ) : (
+          <>
+            <form method="post" class="rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <input type="hidden" name="action" value="merge" />
+              <p class="mb-2 text-amber-900">Moves all {detail.listingTotal} business(es), its import categories, and its old addresses into another category, then removes this one. /{c.slug}/ redirects there.</p>
+              <div class="flex flex-wrap items-center gap-2">
+                <CategorySelect name="intoId" groups={others} required class="min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5" aria-label="Merge into" placeholder="Merge into…" />
+                <label class="flex items-center gap-1"><input type="checkbox" name="confirm" value="yes" /> I’m sure</label>
+                <button class="rounded-md bg-amber-800 px-3 py-1.5 font-medium text-white hover:bg-amber-900">Merge</button>
+              </div>
+            </form>
+            {detail.listingTotal === 0 && (
+              <form method="post" class="rounded-lg border border-red-300 bg-red-50 p-4">
+                <input type="hidden" name="action" value="delete" />
+                <p class="mb-2 text-red-900">No businesses use this category. {isParent ? `Deleting it makes /${c.slug}/ a 404.` : `/${c.slug}/ will redirect to /${detail.parent!.slug}/.`}</p>
+                <button class="rounded-md bg-red-700 px-3 py-1.5 font-medium text-white hover:bg-red-800">Delete category</button>
+              </form>
+            )}
+          </>
+        )}
+      </section>
+    </>
+  )}
+</Base>

@@ -40,7 +40,9 @@ src/data/taxonomy.ts           starting category tree: parents, subcategories, O
 src/lib/category-rules.ts      pure: BREAKOUT_AT/COLLAPSE_BELOW, nextBrokenOut, alias matching, REFRESH_BREAKOUTS_SQL (unit-tested)
 src/lib/categories.ts          refreshBreakouts()
 src/components/CategorySelect.astro  parent → subcategory picker (owner form, admin approvals)
-src/pages/admin/categories/    read-only category tree + unmapped import categories
+src/pages/admin/categories/    category tree; add, rename, move, merge, delete; import aliases; map unmapped import categories
+src/pages/admin/towns/         towns: add, rename, merge, delete
+src/lib/admin-taxonomy.ts      category/town/alias writes for those pages (retired slugs, merges)
 src/pages/listing/[slug]/index.astro  detail page + LocalBusiness JSON-LD + claim/edit link
 src/pages/listing/[slug]/claim.astro  claim an unclaimed listing (signed in)
 src/pages/search.astro         ?q=&category=&town=&page=
@@ -129,6 +131,14 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 - Import mapping lives in `category_aliases` (lower-cased source name → category). Unknown source
   categories are not imported; they are recorded in `import_unmapped` and shown on
   `/admin/categories`.
+- **Admin changes** (`/admin/categories`, `/admin/towns`) go live at once. A slug that stops being
+  used (rename, merge, delete) goes into `retired_slugs` with its target category or town: the old
+  URL (and `/old/town/`) 301s to the target's current slug; no target (a deleted parent or town) is
+  a 404. Creating a category or town with a retired slug drops the retired row. Merge moves listings,
+  aliases, open owner edits, and old URLs; delete needs no listings, no subcategories, and no open
+  owner edit using it. Merges do not write `listing_changes` (that would stop imports refreshing them).
+- The category seed and the importer never re-create a retired slug: aliases resolve to where the
+  category went, and import rows for a merged service town go to the target town (deleted: skipped).
 - `src/data/taxonomy.ts` seeds a fresh database (`npm run seed:categories:*`, add-only). Its tests
   check that no alias maps twice and no slug clashes with a town or reserved route.
 

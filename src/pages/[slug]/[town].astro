@@ -4,11 +4,19 @@
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
 import BannerAd from '../../components/BannerAd.astro';
-import { filterFor, getCategory, getTown, searchListings } from '../../lib/queries';
+import { filterFor, getCategory, getTown, retiredTarget, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
 const [found, town] = await Promise.all([getCategory(Astro.params.slug!), getTown(Astro.params.town!)]);
-if (!found || !town) return new Response(null, { status: 404 });
+if (!found || !town) {
+  // Either half renamed, merged, or deleted in admin: follow it if both halves still resolve.
+  const [c, t] = await Promise.all([
+    found ? found.category.slug : retiredTarget(Astro.params.slug!).then((r) => r?.category),
+    town ? town.slug : retiredTarget(Astro.params.town!).then((r) => r?.town),
+  ]);
+  if (c && t) return Astro.redirect(`/${c}/${t}/${Astro.url.search}`, 301);
+  return new Response(null, { status: 404 });
+}
 const { category, parent } = found;
 if (parent && !category.brokenOut) return Astro.redirect(`/${parent.slug}/${town.slug}/${Astro.url.search}`, 301);
 

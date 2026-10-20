@@ -13,3 +13,15 @@ export function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
+
+/**
+ * Why `slug` cannot be a category or town URL, or null if it can. Clashes with existing categories
+ * and towns are checked against the database (and enforced by the slug-guard triggers).
+ */
+export function placeSlugProblem(slug: string): string | null {
+  if (!slug) return 'The URL name is empty.';
+  if (slug.length > 80) return 'The URL name is longer than 80 characters.';
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) return 'The URL name may use lower-case letters, digits, and single hyphens only.';
+  if (RESERVED_SLUGS.has(slug)) return `“${slug}” is a reserved address on the site.`;
+  return null;
+}

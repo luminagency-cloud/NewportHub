@@ -1,6 +1,6 @@
 import { and, asc, count, eq, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
-import { categories, listings, towns, type Category } from '../db/schema';
+import { categories, listings, retiredSlugs, towns, type Category } from '../db/schema';
 import { categoryLink } from './category-rules';
 import { db } from './db';
 
@@ -166,6 +166,22 @@ export async function getCategory(slug: string) {
       .from(categories)
       .leftJoin(parentCat, eq(categories.parentId, parentCat.id))
       .where(eq(categories.slug, slug))
+      .limit(1)
+  )[0];
+}
+
+/**
+ * Where an old category or town slug (renamed, merged, or deleted in admin) points now: the
+ * current slug of its target category or town. Both null: retired with nowhere to go (404).
+ */
+export async function retiredTarget(slug: string) {
+  return (
+    await db()
+      .select({ category: categories.slug, town: towns.slug })
+      .from(retiredSlugs)
+      .leftJoin(categories, eq(retiredSlugs.categoryId, categories.id))
+      .leftJoin(towns, eq(retiredSlugs.townId, towns.id))
+      .where(eq(retiredSlugs.slug, slug))
       .limit(1)
   )[0];
 }
