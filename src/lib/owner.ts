@@ -133,7 +133,7 @@ export async function openEdit(listingId: number) {
 
 /**
  * Save an owner's edit. Unpublished listings (their own pending or rejected submissions) change
- * directly and go (back) to pending. Published listings never change here: the edit is stored in
+ * directly and go (back) to pending. Published (and admin-hidden) listings never change here: the edit is stored in
  * pending_edits, replacing any earlier unreviewed edit, and goes live only when an admin approves it.
  */
 export async function saveOwnerEdit(
@@ -144,7 +144,7 @@ export async function saveOwnerEdit(
 ): Promise<{ result: 'updated' | 'queued' | 'unchanged'; logoError?: string }> {
   const up = await uploadLogo(logo, listing.id);
 
-  if (listing.status !== 'published') {
+  if (listing.status === 'pending' || listing.status === 'rejected') {
     await db()
       .update(listings)
       .set({ ...v, ...(up.key ? { logoR2Key: up.key } : {}), status: 'pending', updatedAt: new Date() })

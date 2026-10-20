@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { diffChanges, parseListingForm } from './listing-form.ts';
+import { diffChanges, fieldChanges, parseAdminFields, parseListingForm } from './listing-form.ts';
 
 const opts = { categoryIds: new Set([1]), townIds: new Set([2]), allowSuggestions: false };
 const form = (fields: Record<string, string>) => {
@@ -26,4 +26,18 @@ test('suggestions only when allowed', () => {
 test('diffChanges keeps only changed fields', () => {
   const current = { name: 'Cafe', phone: '1', website: 'https://example.com', hours: null };
   assert.deepEqual(diffChanges(current, { name: 'Cafe', phone: '2', website: 'https://example.com', hours: null }), { phone: '2' });
+});
+
+test('admin fields: status, plan, slug, owner', () => {
+  const f = (o: Record<string, string>) => { const d = new FormData(); for (const [k, v] of Object.entries(o)) d.set(k, v); return d; };
+  const ok = parseAdminFields(f({ status: 'hidden', tier: 'featured', slug: ' Joe’s Pizza ', owner: 'a@b.co' }));
+  assert.deepEqual(ok.errors, []);
+  assert.equal(ok.values.slug, 'joe-s-pizza');
+  assert.equal(parseAdminFields(f({ status: 'gone', tier: 'free' })).errors.length, 1);
+  assert.equal(parseAdminFields(f({ status: 'published', tier: 'free', owner: 'bob' })).errors.length, 1);
+  assert.deepEqual(parseAdminFields(f({ status: 'published', tier: 'free', owner: 'user_2abc' })).errors, []);
+});
+
+test('fieldChanges lists before and after', () => {
+  assert.deepEqual(fieldChanges({ name: 'A', phone: null, hours: { Monday: [] } }, { name: 'B', phone: null, hours: { Monday: [] } }), { name: ['A', 'B'] });
 });

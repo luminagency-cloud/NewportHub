@@ -52,6 +52,12 @@ src/lib/auth.ts                isAdmin(), sessionUser() (Clerk user + verified e
 src/lib/verify.ts              email-domain claim verification
 src/lib/owner.ts               owner writes: claims, submissions, edits
 src/lib/admin.ts               moderation: approve/reject listings, claims, edits
+src/lib/admin-listings.ts      admin search/create/edit/delete of any listing, slug redirects, change log
+src/pages/admin/listings/      /admin/listings (search) and /admin/listings/<id|new> (every field, live at once)
+src/lib/traffic.ts             listing views + outbound clicks: recordListingEvent, per-listing and site totals
+src/lib/traffic-rules.ts       pure: beacon body parsing, day ranges (unit-tested)
+src/pages/api/track.ts         POST beacon for outbound clicks
+src/pages/admin/traffic/       site-wide traffic sent, by date range
 src/lib/listing-form.ts        shared listing form validation + diffChanges()
 src/lib/media.ts               logo upload to R2 (magic-byte check, PNG/JPEG/WebP, 1 MB)
 src/lib/billing.ts             Stripe: checkout, portal, webhook verify + handlers, syncSubscription()
@@ -79,6 +85,7 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 - **Every commit bumps the version** in `package.json` (at least a patch:
   `npm version patch --no-git-tag-version`, which also updates `package-lock.json`). Minor for new
   features, major for breaking changes. Include the bump in the same commit as the change.
+  If the version is higher than expected, the owner bumped it by hand: bump from there, no comment.
 
 - **Bindings:** `import { env } from 'cloudflare:workers'`. `Astro.locals.runtime.env` no longer
   exists (removed in Astro 6). Run `npm run cf-typegen` after editing `wrangler.toml`.
@@ -143,6 +150,13 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 - **Logos:** a new R2 key per upload (`logos/<listingId>/<uuid>.<ext>`), so a pending logo never
   replaces the live one. Replaced or rejected logo objects are deleted from R2.
 - **Admin:** `ADMIN_USER_IDS` (comma-separated Clerk user ids). Non-admins get 404 on `/admin`.
+- **Admin edits** (`/admin/listings/<id>`) change every field at once, no review: status, plan, slug,
+  owner (email or Clerk user id; the person must have an account), logo. Status `hidden` takes a
+  listing off the site (the normal alternative to deleting); owners of hidden listings still edit
+  through review. A slug change keeps the old URL as a 301 (`slug_redirects`). Admin edits and
+  approved owner edits are logged in `listing_changes` (no FK, so the log outlives a deleted
+  listing). Delete is refused while a Stripe subscription is live. A plan set by hand is
+  overwritten by the next Stripe event if the listing has a subscription.
 
 ## Billing (Stripe)
 
@@ -185,6 +199,19 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   not an open redirect. Clicks outside the ad's dates still redirect but are not counted.
 - Images: PNG/JPEG/WebP, max 2 MB, R2 key `banners/<placement>/<uuid>.<ext>`; replacing or deleting
   an ad deletes the old object. `go` is a reserved slug (migration 0005).
+
+## Traffic (views and clicks out)
+
+- `listing_stats`: one row per listing per day (New York) per kind (`view`, `website`, `phone`,
+  `email`, `directions`), incremented with an upsert, only for published listings.
+- Views count when the listing page renders (`waitUntil`). Outbound links on the listing page carry
+  `data-track="<kind>"` and point straight at the business; a click sends
+  `navigator.sendBeacon('/api/track', '{"l":<id>,"k":"<kind>"}')`. The endpoint always answers 204.
+- `isBot` user agents are not counted (headless browsers included: E2E tests need a normal UA).
+  Counts are not deduplicated per visitor, and anyone can post the beacon, so treat numbers as
+  indicative.
+- Admin: per-listing totals for a date range and all time on `/admin/listings/<id>`; site totals
+  and top listings on `/admin/traffic`.
 
 ## SEO
 
@@ -298,11 +325,12 @@ newporthub.com.
 `scripts/seed-outscraper.ts` (`npm run import:local|import:remote -- <file>`) reads an Outscraper Google Maps export (.xlsx as downloaded, or .csv), writes `data/seed.sql`, and runs it
 with `wrangler d1 execute`. Seed categories first. New listings: `status=published`, `tier=free`,
 unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running refreshes source
-fields **only on unclaimed listings**, so owner edits survive, and never touches tier, status, owner,
+fields **only on unclaimed listings never edited in admin** (no `listing_changes` row), so owner and admin edits survive, and never touches tier, status, owner,
 or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing
 name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
 on `category`, then each `subtypes` entry, filed on that category's parent; no hit → row not imported, source category saved to
-`import_unmapped`. **Hours are not imported** (Basic has no hours). Columns read: `name,
+`import_unmapped`. **Hours are not imported** (Basic has no hours). Website is saved the way the form saves it (no trailing slash on a bare domain); `about` is used as
+the description only when it is prose (Outscraper usually puts JSON there). Columns read: `name,
 place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
 email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.
 

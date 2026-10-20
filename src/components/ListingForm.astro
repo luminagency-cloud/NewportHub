@@ -40,6 +40,7 @@ const townNew = allowSuggestions && !!values.suggestedTown;
       <ul class="mt-1 list-disc pl-5">{errors.map((e) => <li>{e}</li>)}</ul>
     </div>
   )}
+  <slot name="top" />
 
   <label class={label}>Business name *
     <input name="name" required maxlength="120" value={values.name ?? ''} class={input} />
@@ -111,6 +112,7 @@ const townNew = allowSuggestions && !!values.suggestedTown;
       <input name="logo" type="file" accept="image/png,image/jpeg,image/webp" class="mt-1 block text-sm" />
     </label>
     {logoKey && <img src={`/media/${logoKey}`} alt="Current logo" width="64" height="64" class="mt-2 h-16 w-16 rounded border object-contain" />}
+    <slot name="logo" />
   </div>
 
   <slot name="note" />

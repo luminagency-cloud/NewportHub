@@ -1,7 +1,8 @@
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
-import { categories, claims, listings, pendingEdits, towns, type ListingChanges } from '../db/schema';
+import { categories, claims, listingChanges, listings, pendingEdits, towns, type ListingChanges } from '../db/schema';
 import { refreshBreakouts } from './categories';
 import { db } from './db';
+import { fieldChanges } from './listing-form';
 import { deleteMedia } from './media';
 import { RESERVED_SLUGS, slugify } from './slug';
 
@@ -161,6 +162,10 @@ export async function approveEdit(editId: number, adminId: string): Promise<Resu
   await db().batch([
     db().update(listings).set({ ...changes, updatedAt: now }).where(eq(listings.id, row.listing.id)),
     db().update(pendingEdits).set({ status: 'approved', reviewedBy: adminId, reviewedAt: now }).where(eq(pendingEdits.id, editId)),
+    db().insert(listingChanges).values({
+      listingId: row.listing.id, userId: row.edit.userId, userEmail: row.edit.userEmail, action: `owner edit, approved by ${adminId}`,
+      changes: fieldChanges(row.listing, changes),
+    }),
   ]);
   if (changes.logoR2Key && changes.logoR2Key !== row.listing.logoR2Key) await deleteMedia(row.listing.logoR2Key);
   if (changes.categoryId) await refreshBreakouts();
