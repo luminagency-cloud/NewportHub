@@ -209,6 +209,22 @@ export const listingChanges = sqliteTable(
   (t) => [index('listing_changes_listing_idx').on(t.listingId, t.createdAt)],
 );
 
+/** What a listing's traffic counts: page views and clicks out to the business. */
+export const TRAFFIC_KINDS = ['view', 'website', 'phone', 'email', 'directions'] as const;
+export type TrafficKind = (typeof TRAFFIC_KINDS)[number];
+
+/** Daily traffic per listing: one row per listing, day, and kind, incremented in place. */
+export const listingStats = sqliteTable(
+  'listing_stats',
+  {
+    listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+    day: text('day').notNull(), // YYYY-MM-DD, America/New_York
+    kind: text('kind', { enum: TRAFFIC_KINDS }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.listingId, t.day, t.kind] }), index('listing_stats_day_idx').on(t.day)],
+);
+
 export type Category = typeof categories.$inferSelect;
 export type Town = typeof towns.$inferSelect;
 export type Listing = typeof listings.$inferSelect;

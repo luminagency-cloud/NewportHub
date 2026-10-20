@@ -54,6 +54,10 @@ src/lib/owner.ts               owner writes: claims, submissions, edits
 src/lib/admin.ts               moderation: approve/reject listings, claims, edits
 src/lib/admin-listings.ts      admin search/create/edit/delete of any listing, slug redirects, change log
 src/pages/admin/listings/      /admin/listings (search) and /admin/listings/<id|new> (every field, live at once)
+src/lib/traffic.ts             listing views + outbound clicks: recordListingEvent, per-listing and site totals
+src/lib/traffic-rules.ts       pure: beacon body parsing, day ranges (unit-tested)
+src/pages/api/track.ts         POST beacon for outbound clicks
+src/pages/admin/traffic/       site-wide traffic sent, by date range
 src/lib/listing-form.ts        shared listing form validation + diffChanges()
 src/lib/media.ts               logo upload to R2 (magic-byte check, PNG/JPEG/WebP, 1 MB)
 src/lib/billing.ts             Stripe: checkout, portal, webhook verify + handlers, syncSubscription()
@@ -195,6 +199,19 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   not an open redirect. Clicks outside the ad's dates still redirect but are not counted.
 - Images: PNG/JPEG/WebP, max 2 MB, R2 key `banners/<placement>/<uuid>.<ext>`; replacing or deleting
   an ad deletes the old object. `go` is a reserved slug (migration 0005).
+
+## Traffic (views and clicks out)
+
+- `listing_stats`: one row per listing per day (New York) per kind (`view`, `website`, `phone`,
+  `email`, `directions`), incremented with an upsert, only for published listings.
+- Views count when the listing page renders (`waitUntil`). Outbound links on the listing page carry
+  `data-track="<kind>"` and point straight at the business; a click sends
+  `navigator.sendBeacon('/api/track', '{"l":<id>,"k":"<kind>"}')`. The endpoint always answers 204.
+- `isBot` user agents are not counted (headless browsers included: E2E tests need a normal UA).
+  Counts are not deduplicated per visitor, and anyone can post the beacon, so treat numbers as
+  indicative.
+- Admin: per-listing totals for a date range and all time on `/admin/listings/<id>`; site totals
+  and top listings on `/admin/traffic`.
 
 ## SEO
 

@@ -8,6 +8,9 @@ import { adminListingDetail, deleteAdminListing, saveAdminListing } from '../../
 import { parseAdminFields, parseListingForm, type AdminFields, type ListingFormValues } from '../../../lib/listing-form';
 import { allTowns, categoryTree } from '../../../lib/queries';
 import { STATUSES, TIERS } from '../../../db/schema';
+import { listingTraffic } from '../../../lib/traffic';
+import { dayRange } from '../../../lib/traffic-rules';
+import { adDay } from '../../../lib/ad-form';
 
 const { userId } = Astro.locals.auth();
 if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
@@ -63,6 +66,9 @@ if (Astro.request.method === 'POST') {
 }
 
 const msg = Astro.url.searchParams.get('msg');
+const range = dayRange(Astro.url.searchParams.get('from'), Astro.url.searchParams.get('to'), adDay());
+const traffic = listing ? await listingTraffic(listing.id, range.from, range.to) : undefined;
+const TRAFFIC_ROWS = [['view', 'Page views'], ['website', 'Website clicks'], ['phone', 'Phone taps'], ['email', 'Email clicks'], ['directions', 'Directions clicks']] as const;
 const field = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
 const label = 'block text-sm font-medium text-slate-700';
 const liveSub = listing?.stripeSubscriptionId && ['active', 'trialing', 'past_due'].includes(listing.subscriptionStatus ?? '');
@@ -113,6 +119,27 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
   {detail && (
     <>
       {detail.redirects.length > 0 && <p class="mt-8 text-sm text-slate-600">Old addresses that redirect here: {detail.redirects.map((s) => `/listing/${s}`).join(', ')}</p>}
+
+      {traffic && (
+        <section class="mt-10">
+          <h2 class="mb-3 text-lg font-semibold">Traffic sent</h2>
+          <form method="get" class="mb-3 flex flex-wrap items-end gap-2 text-sm">
+            <label class="text-xs text-slate-600">From<br /><input type="date" name="from" value={range.from} class="rounded-md border border-slate-300 bg-white px-2 py-1" /></label>
+            <label class="text-xs text-slate-600">To<br /><input type="date" name="to" value={range.to} class="rounded-md border border-slate-300 bg-white px-2 py-1" /></label>
+            <button class="rounded-md bg-slate-800 px-3 py-1.5 font-medium text-white hover:bg-slate-900">Show</button>
+          </form>
+          <table class="text-sm">
+            <thead class="text-xs text-slate-500"><tr><th class="py-1 pr-8 text-left font-normal"></th><th class="py-1 pr-8 text-right font-normal">{range.from} – {range.to}</th><th class="py-1 text-right font-normal">All time</th></tr></thead>
+            <tbody>
+              {TRAFFIC_ROWS.map(([k, label]) => (
+                <tr class="border-t border-slate-100"><th class="py-1 pr-8 text-left font-normal text-slate-600">{label}</th><td class="py-1 pr-8 text-right tabular-nums">{traffic.range[k]}</td><td class="py-1 text-right tabular-nums">{traffic.allTime[k]}</td></tr>
+              ))}
+              <tr class="border-t border-slate-300 font-semibold"><th class="py-1 pr-8 text-left">Clicks out</th><td class="py-1 pr-8 text-right tabular-nums">{traffic.range.clicks}</td><td class="py-1 text-right tabular-nums">{traffic.allTime.clicks}</td></tr>
+            </tbody>
+          </table>
+          <p class="mt-2 text-xs text-slate-500">Counted since tracking started; crawlers are not counted.</p>
+        </section>
+      )}
 
       <section class="mt-10">
         <h2 class="mb-3 text-lg font-semibold">Change history</h2>

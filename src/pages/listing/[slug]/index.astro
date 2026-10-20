@@ -5,6 +5,7 @@ import { categoryLink } from '../../../lib/category-rules';
 import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
 import { redirectedSlug } from '../../../lib/admin-listings';
 import { isAdmin } from '../../../lib/auth';
+import { recordListingEvent } from '../../../lib/traffic';
 
 const row = await getPublishedListing(Astro.params.slug!);
 if (!row) {
@@ -46,6 +47,8 @@ const mapUrl = l.lat != null && l.lng != null
   ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`
   : l.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.address)}` : undefined;
 const paid = l.tier !== 'free';
+// Count the view after the response is sent, so tracking never slows the page.
+Astro.locals.cfContext?.waitUntil(recordListingEvent(l.id, 'view', Astro.request.headers.get('user-agent')).catch((err) => console.error('View count failed', err)));
 const { userId } = Astro.locals.auth();
 ---
 <Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={l.description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`} ogImage={logo}>
@@ -83,11 +86,11 @@ const { userId } = Astro.locals.auth();
           </section>
         )}
       </div>
-      <aside class="space-y-3 text-sm">
-        {l.address && <p><span class="block text-slate-500">Address</span>{mapUrl ? <a href={mapUrl} rel="nofollow noopener" target="_blank" class="text-sky-700 hover:underline">{l.address}</a> : l.address}</p>}
-        {l.phone && <p><span class="block text-slate-500">Phone</span><a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} class="text-sky-700 hover:underline">{l.phone}</a></p>}
-        {l.website && <p><span class="block text-slate-500">Website</span><a href={l.website} rel={paid ? 'noopener' : 'nofollow noopener'} target="_blank" class="break-all text-sky-700 hover:underline">{l.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>}
-        {l.email && <p><span class="block text-slate-500">Email</span><a href={`mailto:${l.email}`} class="break-all text-sky-700 hover:underline">{l.email}</a></p>}
+      <aside class="space-y-3 text-sm" data-listing={l.id}>
+        {l.address && <p><span class="block text-slate-500">Address</span>{mapUrl ? <a href={mapUrl} data-track="directions" rel="nofollow noopener" target="_blank" class="text-sky-700 hover:underline">{l.address}</a> : l.address}</p>}
+        {l.phone && <p><span class="block text-slate-500">Phone</span><a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} data-track="phone" class="text-sky-700 hover:underline">{l.phone}</a></p>}
+        {l.website && <p><span class="block text-slate-500">Website</span><a href={l.website} data-track="website" rel={paid ? 'noopener' : 'nofollow noopener'} target="_blank" class="break-all text-sky-700 hover:underline">{l.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>}
+        {l.email && <p><span class="block text-slate-500">Email</span><a href={`mailto:${l.email}`} data-track="email" class="break-all text-sky-700 hover:underline">{l.email}</a></p>}
       </aside>
     </div>
   </article>
@@ -99,3 +102,16 @@ const { userId } = Astro.locals.auth();
   )}
   {isAdmin(userId) && <p class="mt-2 text-sm"><a href={`/admin/listings/${l.id}`} class="font-medium text-sky-700 hover:underline">Edit in admin</a></p>}
 </Base>
+
+<script>
+  // Outbound clicks (website, phone, email, directions): links point straight at the business, and
+  // the click is reported with a beacon that does not hold up the navigation.
+  const report = (e: Event) => {
+    const link = e.target instanceof HTMLElement ? e.target.closest('a[data-track]') : null;
+    const box = link?.closest('[data-listing]');
+    if (!(link instanceof HTMLAnchorElement) || !(box instanceof HTMLElement)) return;
+    navigator.sendBeacon('/api/track', JSON.stringify({ l: Number(box.dataset.listing), k: link.dataset.track }));
+  };
+  document.addEventListener('click', report);
+  document.addEventListener('auxclick', report);
+</script>

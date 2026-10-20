@@ -57,6 +57,13 @@
       "when": 1792455269272,
       "tag": "0007_admin_listings",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792455754912,
+      "tag": "0008_listing_stats",
+      "breakpoints": true
     }
   ]
 }
