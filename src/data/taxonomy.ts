@@ -17,6 +17,8 @@ export interface TaxonomySub {
 }
 export interface TaxonomyParent {
   name: string;
+  /** Key in src/lib/category-icons.ts. Subcategories show their parent's icon. */
+  icon: string;
   aliases: string[];
   search: string[];
   subs: TaxonomySub[];
@@ -29,6 +31,7 @@ export const SERVICE_STATE = 'RI';
 export const TAXONOMY: TaxonomyParent[] = [
   {
     name: 'Restaurants',
+    icon: 'utensils',
     aliases: ['restaurant', 'family restaurant', 'fine dining restaurant', 'bistro', 'brasserie', 'diner', 'food court', 'takeout restaurant', 'delivery restaurant', 'new american restaurant', 'modern european restaurant', 'european restaurant', 'vegan restaurant', 'vegetarian restaurant', 'health food restaurant', 'fusion restaurant', 'lunch restaurant', 'new england restaurant'],
     search: ['restaurant', 'seafood restaurant', 'pizza restaurant', 'italian restaurant', 'mexican restaurant', 'sushi restaurant', 'chinese restaurant', 'thai restaurant', 'indian restaurant', 'american restaurant', 'breakfast restaurant', 'sandwich shop', 'food truck'],
     subs: [
@@ -49,6 +52,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Coffee Shops',
+    icon: 'coffee',
     aliases: ['coffee shop', 'cafe', 'espresso bar', 'coffee roasters', 'tea house'],
     search: ['coffee shop', 'cafe'],
     subs: [
@@ -57,6 +61,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Bakeries',
+    icon: 'croissant',
     aliases: ['bakery', 'pastry shop', 'cake shop', 'cupcake shop', 'bagel bakery'],
     search: ['bakery', 'donut shop'],
     subs: [
@@ -65,6 +70,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Ice Cream & Desserts',
+    icon: 'ice-cream',
     aliases: ['ice cream shop', 'frozen yogurt shop', 'dessert shop', 'gelato shop', 'chocolate shop', 'candy store', 'confectionery store'],
     search: ['ice cream shop'],
     subs: [],
@@ -72,6 +78,7 @@ export const TAXONOMY: TaxonomyParent[] = [
 
   {
     name: 'Bars & Nightlife',
+    icon: 'martini',
     aliases: ['bar', 'lounge'],
     search: ['bar', 'pub', 'brewery', 'winery', 'cocktail bar', 'night club'],
     subs: [
@@ -84,6 +91,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Hotels & Lodging',
+    icon: 'bed',
     aliases: ['lodging'],
     search: ['hotel', 'inn', 'bed and breakfast', 'motel', 'vacation home rental agency', 'campground'],
     subs: [
@@ -96,6 +104,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Things to Do',
+    icon: 'landmark',
     aliases: ['tourist attraction'],
     search: ['tourist attraction', 'museum', 'tour operator', 'art gallery', 'bowling alley', 'movie theater', 'golf course'],
     subs: [
@@ -109,6 +118,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Boating & Marine',
+    icon: 'sailboat',
     aliases: [],
     search: ['marina', 'boat rental service', 'fishing charter', 'sailing school', 'boat repair shop', 'yacht broker', 'boat dealer'],
     subs: [
@@ -121,6 +131,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Weddings & Events',
+    icon: 'gem',
     aliases: [],
     search: ['wedding venue', 'event venue', 'caterer', 'wedding photographer', 'florist', 'event planner', 'dj service'],
     subs: [
@@ -134,6 +145,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Shopping',
+    icon: 'shopping-bag',
     aliases: ['store', 'shopping mall', 'shop'],
     search: ['clothing store', 'gift shop', 'jewelry store', 'boutique', 'book store', 'furniture store', 'antique store', 'hardware store', 'sporting goods store'],
     subs: [
@@ -149,6 +161,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Food & Drink Shops',
+    icon: 'basket',
     aliases: ['food store'],
     search: ['grocery store', 'seafood market', 'liquor store', 'wine store', 'butcher shop', 'farmers market', 'specialty food store'],
     subs: [
@@ -161,6 +174,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Health & Medical',
+    icon: 'stethoscope',
     aliases: ['medical clinic', 'health'],
     search: ['doctor', 'dentist', 'orthodontist', 'urgent care center', 'pharmacy', 'physical therapist', 'chiropractor', 'optometrist'],
     subs: [
@@ -175,6 +189,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Beauty & Wellness',
+    icon: 'sparkles',
     aliases: ['beauty and wellness'],
     search: ['hair salon', 'barber shop', 'nail salon', 'day spa', 'massage therapist', 'gym', 'yoga studio', 'tattoo shop'],
     subs: [
@@ -189,6 +204,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Home Services',
+    icon: 'wrench',
     aliases: [],
     search: ['plumber', 'electrician', 'hvac contractor', 'house cleaning service', 'landscaper', 'pest control service', 'roofing contractor', 'painter', 'locksmith', 'moving company'],
     subs: [
@@ -206,6 +222,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Builders & Contractors',
+    icon: 'hard-hat',
     aliases: ['contractor'],
     search: ['general contractor', 'home builder', 'carpenter', 'excavating contractor', 'kitchen remodeler', 'architect'],
     subs: [
@@ -218,6 +235,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Automotive',
+    icon: 'car',
     aliases: [],
     search: ['auto repair shop', 'car dealer', 'auto body shop', 'tire shop', 'car wash', 'gas station', 'towing service'],
     subs: [
@@ -234,6 +252,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Professional Services',
+    icon: 'briefcase',
     aliases: ['corporate office', 'business center'],
     search: ['lawyer', 'accountant', 'insurance agency', 'financial planner', 'bank', 'marketing agency'],
     subs: [
@@ -247,6 +266,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Real Estate',
+    icon: 'house',
     aliases: [],
     search: ['real estate agency', 'property management company'],
     subs: [
@@ -256,6 +276,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Pets',
+    icon: 'paw',
     aliases: [],
     search: ['veterinarian', 'pet groomer', 'pet store', 'dog trainer', 'kennel'],
     subs: [
@@ -267,6 +288,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Education & Childcare',
+    icon: 'graduation-cap',
     aliases: ['school'],
     search: ['day care center', 'preschool', 'private school', 'tutoring service', 'music school', 'dance school'],
     subs: [
@@ -278,6 +300,7 @@ export const TAXONOMY: TaxonomyParent[] = [
   },
   {
     name: 'Community & Nonprofits',
+    icon: 'hand-heart',
     aliases: [],
     search: ['church', 'non-profit organization', 'community center'],
     subs: [

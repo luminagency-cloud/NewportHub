@@ -4,6 +4,7 @@
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
 import BannerAd from '../../components/BannerAd.astro';
+import CategoryIcon from '../../components/CategoryIcon.astro';
 import { allTowns, categoryTree, filterFor, getCategory, getTown, parentIdsInTown, retiredTarget, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
@@ -46,17 +47,24 @@ const chip = 'inline-block rounded-full border border-slate-300 bg-white px-3 py
     {parent && <><a href={`/${parent.slug}/`} class="hover:underline">{parent.name}</a>{' / '}</>}
     {category?.name ?? town!.name}
   </nav>
-  <h1 class="mb-2 text-2xl font-bold">{title}</h1>
+  <h1 class="mb-2 flex items-center gap-3 text-2xl font-bold">
+    {category && (
+      <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-700">
+        <CategoryIcon icon={category.icon} parentIcon={parent?.icon} class="h-6 w-6" />
+      </span>
+    )}
+    {title}
+  </h1>
   {category?.description && <p class="mb-4 text-slate-600">{category.description}</p>}
   {subLinks.length > 0 && (
     <ul class="mb-3 flex flex-wrap gap-2 text-sm" aria-label="Types">
-      {subLinks.map((s) => <li><a href={`/${s.slug}/`} class={`${chip} font-medium`}>{s.name} <span class="text-slate-400">{s.own}</span></a></li>)}
+      {subLinks.map((s) => <li><a href={`/${s.slug}/`} class={`${chip} inline-flex items-center gap-1.5 font-medium`}><CategoryIcon icon={s.icon} parentIcon={category!.icon} class="h-4 w-4 text-sky-700" />{s.name} <span class="text-slate-400">{s.own}</span></a></li>)}
     </ul>
   )}
   <ul class="mb-6 flex flex-wrap gap-2 text-sm" aria-label={category ? 'Towns' : 'Categories'}>
     {category
       ? townLinks.map((t) => <li><a href={`/${slug}/${t.slug}/`} class={chip}>{t.name}</a></li>)
-      : categoryLinks.map((p) => <li><a href={`/${p.slug}/${slug}/`} class={chip}>{p.name}</a></li>)}
+      : categoryLinks.map((p) => <li><a href={`/${p.slug}/${slug}/`} class={`${chip} inline-flex items-center gap-1.5`}><CategoryIcon icon={p.icon} class="h-4 w-4 text-sky-700" />{p.name}</a></li>)}
   </ul>
   {category ? (
     <div class="grid items-start gap-8 lg:grid-cols-[1fr_300px]">

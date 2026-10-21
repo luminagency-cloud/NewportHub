@@ -30,6 +30,8 @@ export const categories = sqliteTable(
     description: text('description'),
     parentId: integer('parent_id').references((): AnySQLiteColumn => categories.id),
     brokenOut: integer('broken_out', { mode: 'boolean' }).notNull().default(false),
+    /** Icon key from src/lib/category-icons.ts; null shows the parent's icon (or the default). */
+    icon: text('icon'),
   },
   (t) => [index('categories_parent_idx').on(t.parentId)],
 );

@@ -4,6 +4,8 @@
 import Base from '../../../layouts/Base.astro';
 import AdminNav from '../../../components/AdminNav.astro';
 import CategorySelect from '../../../components/CategorySelect.astro';
+import CategoryIcon from '../../../components/CategoryIcon.astro';
+import { CATEGORY_ICONS, type CategoryIconKey } from '../../../lib/category-icons';
 import { isAdmin } from '../../../lib/auth';
 import { categoryDetail, deleteAlias, deleteCategory, mergeCategory, saveAlias, saveCategory } from '../../../lib/admin-taxonomy';
 import { categoryTree } from '../../../lib/queries';
@@ -21,6 +23,7 @@ let values = {
   slug: detail?.category.slug ?? '',
   description: detail?.category.description ?? '',
   parentId: detail ? detail.category.parentId : Number(Astro.url.searchParams.get('parent')) || null,
+  icon: detail?.category.icon ?? '',
 };
 let error = '';
 
@@ -32,7 +35,7 @@ if (Astro.request.method === 'POST') {
     const r = await saveCategory(id, form);
     if ('ok' in r) return back(r.ok, `/admin/categories/${r.id}`);
     error = r.error;
-    values = { name: String(form.get('name') ?? ''), slug: String(form.get('slug') ?? ''), description: String(form.get('description') ?? ''), parentId: Number(form.get('parentId')) || null };
+    values = { name: String(form.get('name') ?? ''), slug: String(form.get('slug') ?? ''), description: String(form.get('description') ?? ''), parentId: Number(form.get('parentId')) || null, icon: String(form.get('icon') ?? '') };
   } else if (id && action === 'addAlias') {
     const r = await saveAlias(String(form.get('alias') ?? ''), id);
     if ('ok' in r) return back(r.ok);
@@ -97,6 +100,23 @@ const counts = detail ? Object.entries(detail.listingCounts).map(([s, n]) => `${
         </select>
       )}
     </label>
+    <fieldset>
+      <legend class={label}>Icon <span class="font-normal text-slate-500">{isParent ? '(shown on the home page and the category page)' : '(none = the parent’s icon)'}</span></legend>
+      <div class="mt-1 grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5">
+        {!isParent && (
+          <label class="flex cursor-pointer flex-col items-center gap-1 rounded-md border border-slate-200 p-2 text-center text-[11px] leading-tight text-slate-600 has-[:checked]:border-sky-600 has-[:checked]:bg-sky-50">
+            <input type="radio" name="icon" value="" checked={!values.icon} class="sr-only" />
+            <CategoryIcon icon={null} parentIcon={detail?.parent?.icon} class="h-6 w-6 opacity-50" />Parent’s
+          </label>
+        )}
+        {(Object.entries(CATEGORY_ICONS) as [CategoryIconKey, readonly [string, string]][]).map(([key, [name]]) => (
+          <label class="flex cursor-pointer flex-col items-center gap-1 rounded-md border border-slate-200 p-2 text-center text-[11px] leading-tight text-slate-600 has-[:checked]:border-sky-600 has-[:checked]:bg-sky-50 has-[:checked]:text-sky-900">
+            <input type="radio" name="icon" value={key} checked={values.icon === key || (isParent && !values.icon && key === 'store')} class="sr-only" />
+            <CategoryIcon icon={key} class="h-6 w-6 text-sky-700" />{name}
+          </label>
+        ))}
+      </div>
+    </fieldset>
     <label class={label}>Intro text <span class="font-normal text-slate-500">(optional; shown under the heading and used as the search description)</span>
       <textarea name="description" rows="3" maxlength="500" class={field}>{values.description}</textarea>
     </label>

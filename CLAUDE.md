@@ -40,6 +40,8 @@ src/data/taxonomy.ts           starting category tree: parents, subcategories, O
 src/lib/category-rules.ts      pure: BREAKOUT_AT/COLLAPSE_BELOW, nextBrokenOut, alias matching, REFRESH_BREAKOUTS_SQL (unit-tested)
 src/lib/categories.ts          refreshBreakouts()
 src/components/CategorySelect.astro  parent → subcategory picker (owner form, admin approvals)
+src/lib/category-icons.ts      category icon keys → Lucide SVGs (lucide-static); iconFor() falls back sub → parent → default
+src/components/CategoryIcon.astro    inline category icon (home tiles, category headings, cards without a logo)
 src/pages/admin/categories/    category tree; add, rename, move, merge, delete; import aliases; map unmapped import categories
 src/pages/admin/towns/         towns: add, rename, merge, delete
 src/lib/admin-taxonomy.ts      category/town/alias writes for those pages (retired slugs, merges)
@@ -139,6 +141,9 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   owner edit using it. Merges do not write `listing_changes` (that would stop imports refreshing them).
 - The category seed and the importer never re-create a retired slug: aliases resolve to where the
   category went, and import rows for a merged service town go to the target town (deleted: skipped).
+- **Icons:** `categories.icon` holds a key from `CATEGORY_ICONS` (picked in admin). A subcategory
+  without one shows its parent's. The seed fills a parent's icon from `taxonomy.ts` only while it is
+  null. New icons: add them to `CATEGORY_ICONS` (Lucide names).
 - `src/data/taxonomy.ts` seeds a fresh database (`npm run seed:categories:*`, add-only). Its tests
   check that no alias maps twice and no slug clashes with a town or reserved route.
 

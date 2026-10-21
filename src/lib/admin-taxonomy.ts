@@ -1,6 +1,7 @@
 import { and, asc, count, eq, sql } from 'drizzle-orm';
 import { categories, categoryAliases, importUnmapped, listings, pendingEdits, retiredSlugs, towns, type Category } from '../db/schema';
 import { refreshBreakouts } from './categories';
+import { isIconKey } from './category-icons';
 import { aliasKey } from './category-rules';
 import { db } from './db';
 import { placeSlugProblem, slugify } from './slug';
@@ -72,6 +73,9 @@ export async function saveCategory(id: number | null, form: FormData): Promise<S
   const description = text(form, 'description') || null;
   if (description && description.length > 500) return { error: 'Keep the intro text under 500 characters.' };
   const parentId = Number(form.get('parentId')) || null;
+  const iconField = text(form, 'icon');
+  if (iconField && !isIconKey(iconField)) return { error: 'Choose an icon from the list.' };
+  const icon = iconField || null;
 
   if (parentId) {
     const parent = (await db().select().from(categories).where(eq(categories.id, parentId)).limit(1))[0];
@@ -85,7 +89,7 @@ export async function saveCategory(id: number | null, form: FormData): Promise<S
     if (!current) {
       const [, inserted] = await db().batch([
         unretire(slug),
-        db().insert(categories).values({ name, slug, description, parentId }).returning({ id: categories.id }),
+        db().insert(categories).values({ name, slug, description, parentId, icon }).returning({ id: categories.id }),
       ]);
       if (parentId) await refreshBreakouts();
       return { id: inserted[0]!.id, ok: `Added “${name}”.` };
@@ -94,7 +98,7 @@ export async function saveCategory(id: number | null, form: FormData): Promise<S
     await db().batch([
       db()
         .update(categories)
-        .set({ name, slug, description, parentId, brokenOut: parentId === null ? false : current.brokenOut })
+        .set({ name, slug, description, parentId, icon, brokenOut: parentId === null ? false : current.brokenOut })
         .where(eq(categories.id, current.id)),
       ...(slugChanged ? [unretire(slug), retire(current.slug, { categoryId: current.id })] : []),
     ]);

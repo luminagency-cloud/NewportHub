@@ -28,6 +28,8 @@ let aliases = 0;
 for (const p of TAXONOMY) {
   const ps = slugify(p.name);
   out.push(`INSERT INTO categories (slug, name) SELECT ${q(ps)}, ${q(p.name)} WHERE ${free(ps)} ON CONFLICT(slug) DO NOTHING;`);
+  // Fills a missing icon only; an icon picked in admin stays.
+  out.push(`UPDATE categories SET icon = ${q(p.icon)} WHERE id = ${idOf(ps)} AND icon IS NULL;`);
   for (const a of p.aliases) {
     out.push(alias(a, ps));
     aliases++;

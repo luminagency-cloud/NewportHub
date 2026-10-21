@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SERVICE_TOWNS, TAXONOMY } from '../data/taxonomy.ts';
 import { aliasKey } from './category-rules.ts';
+import { isIconKey } from './category-icons.ts';
 import { RESERVED_SLUGS, slugify } from './slug.ts';
 
 test('every alias maps to exactly one category', () => {
@@ -32,4 +33,8 @@ test('category slugs are unique and do not clash with towns or reserved routes',
 test('every search term maps somewhere, so searched businesses are not all unmapped', () => {
   const keys = new Set(TAXONOMY.flatMap((p) => [...p.aliases, ...p.subs.flatMap((s) => s.aliases)]).map(aliasKey));
   for (const term of TAXONOMY.flatMap((p) => p.search)) assert.ok(keys.has(aliasKey(term)), `search term "${term}" has no alias`);
+});
+
+test('every parent has a known icon', () => {
+  for (const p of TAXONOMY) assert.ok(isIconKey(p.icon), `"${p.name}" has unknown icon "${p.icon}"`);
 });
