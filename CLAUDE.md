@@ -182,7 +182,7 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 
 ## Plans
 
-Basic (free) / Plus ($19/mo or $190/yr) / Featured ($29/mo or $290/yr). Internal keys are
+Basic (free) / Plus ($15/mo or $149/yr) / Featured ($39/mo or $350/yr). Internal keys are
 `basic` / `plus` / `featured`. They used to be `free` / `featured` / `premium`; migration
 `0011_plan_tiers.sql` renames them in that order so the old middle plan (`featured`) becomes
 `plus` before the old top plan (`premium`) takes the name `featured`.
@@ -211,7 +211,7 @@ Basic (free) / Plus ($19/mo or $190/yr) / Featured ($29/mo or $290/yr). Internal
   `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY`, `STRIPE_PRICE_FEATURED_MONTHLY`, and
   `STRIPE_PRICE_FEATURED_YEARLY` each hold a price id (`price_…`) or a product id (`prod_…`).
   A product id uses that product's active price for the same interval. A plan/interval with no id
-  is not offered. The plan page shows $19/$190 and $29/$290; create Stripe prices at those amounts.
+  is not offered. The plan page shows Plus $15/$149 and Featured $39/$350; create Stripe prices at those amounts.
 - **Choose plan** (published listings only) → Checkout in subscription mode for the selected
   interval. `metadata` and `subscription_data.metadata` carry `listing_id`, so every later
   subscription event names its listing. A listing that already has a live subscription goes to the
@@ -309,8 +309,8 @@ Without a Stripe account, `STRIPE_API_BASE=http://127.0.0.1:12111` (honoured onl
 | `ADMIN_USER_IDS` | `.dev.vars`; `npx wrangler secret put ADMIN_USER_IDS` | Clerk user ids |
 | `STRIPE_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put STRIPE_SECRET_KEY` | secret; `sk_test_…` locally |
 | `STRIPE_WEBHOOK_SECRET` | `.dev.vars` (from `stripe listen`); secret in production (from the dashboard endpoint) | secret |
-| `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY` | `.dev.vars`; Worker var or secret | Plus price id (`price_…`) or product id (`prod_…`) |
-| `STRIPE_PRICE_FEATURED_MONTHLY`, `STRIPE_PRICE_FEATURED_YEARLY` | `.dev.vars`; Worker var or secret | Featured price id or product id |
+| `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY` | `.dev.vars`; Worker var or secret | Plus $15/month and $149/year. Price id (`price_…`) or product id (`prod_…`) |
+| `STRIPE_PRICE_FEATURED_MONTHLY`, `STRIPE_PRICE_FEATURED_YEARLY` | `.dev.vars`; Worker var or secret | Featured $39/month and $350/year. Price id or product id |
 | `STRIPE_API_BASE` | `.dev.vars` only | test-only mock API base; ignored for live keys |
 
 The names are Astro's: `PUBLIC_CLERK_PUBLISHABLE_KEY`, not the `NEXT_PUBLIC_…` name the Clerk

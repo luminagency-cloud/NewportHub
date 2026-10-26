@@ -27,11 +27,16 @@ export const TIER_LABELS: Record<Tier, string> = {
   featured: 'Featured',
 };
 
-/** Decided prices. Stripe ids live in env vars; these amounts are what the plan page shows. */
+/** Confirmed prices (David, 2026-10-26). Stripe ids live in env vars; these amounts are what the plan page shows. */
 export const PLAN_PRICES = {
-  plus: { month: 19, year: 190 },
-  featured: { month: 29, year: 290 },
+  plus: { month: 15, year: 149 },
+  featured: { month: 39, year: 350 },
 } as const;
+
+/** Dollars saved by paying yearly instead of twelve monthly payments. */
+export function yearlySavings(month: number, year: number): number {
+  return month * 12 - year;
+}
 
 export const BASIC_DESCRIPTION_LIMIT = 250;
 export const PAID_DESCRIPTION_LIMIT = 2000;

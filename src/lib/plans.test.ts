@@ -4,14 +4,23 @@ import { readFileSync } from 'node:fs';
 import {
   BASIC_DESCRIPTION_LIMIT,
   LEGACY_TIER_MAP,
+  PLAN_PRICES,
   categoryForTier,
   descriptionForSave,
   hoursImportedForBasic,
+  yearlySavings,
   publicDescription,
   restrictPaidFields,
   shuffle,
   splitCategoryPage,
 } from './plans.ts';
+
+test('confirmed plan prices and the yearly savings they imply', () => {
+  assert.deepEqual(PLAN_PRICES.plus, { month: 15, year: 149 });
+  assert.deepEqual(PLAN_PRICES.featured, { month: 39, year: 350 });
+  assert.equal(yearlySavings(PLAN_PRICES.plus.month, PLAN_PRICES.plus.year), 31);
+  assert.equal(yearlySavings(PLAN_PRICES.featured.month, PLAN_PRICES.featured.year), 118);
+});
 
 test('legacy tier keys: old featured is Plus, old premium is Featured', () => {
   assert.equal(LEGACY_TIER_MAP.free, 'basic');
