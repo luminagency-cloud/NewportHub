@@ -4,6 +4,7 @@ import ListingForm from '../../../../components/ListingForm.astro';
 import { sessionUser } from '../../../../lib/auth';
 import { parseListingForm, type ListingFormValues } from '../../../../lib/listing-form';
 import { formOptions, getListing, openEdit, saveOwnerEdit } from '../../../../lib/owner';
+import { isPaid } from '../../../../lib/plans';
 
 const user = (await sessionUser(Astro))!;
 const listing = await getListing(Number(Astro.params.id));
@@ -24,15 +25,18 @@ if (Astro.request.method === 'POST') {
   values = parsed.values;
   errors = parsed.errors;
   if (!errors.length) {
-    const { result, logoError } = await saveOwnerEdit(user, listing, parsed.values, form.get('logo'));
+    const { result, logoError } = await saveOwnerEdit(user, listing, parsed.values, form);
     if (!logoError) return Astro.redirect(`/account?done=${result}`, 303);
     errors = [`Your other changes were saved, but the logo was not: ${logoError}`];
   }
 }
-const logoKey = pending?.changes.logoR2Key ?? listing.logoR2Key;
+const logoKey = pending && 'logoR2Key' in pending.changes ? pending.changes.logoR2Key : listing.logoR2Key;
+const photos = pending && 'photos' in pending.changes ? pending.changes.photos : listing.photos;
+const locked = !isPaid(listing.tier);
+const planHref = `/account/listings/${listing.id}/plan`;
 ---
 <Base title={`Edit ${listing.name}`} noindex>
-  <p class="mb-2 text-sm"><a href="/account" class="text-sky-700 hover:underline">← My listings</a></p>
+  <p class="mb-2 text-sm"><a href="/account" class="text-sky-700 hover:underline">← My businesses</a></p>
   <h1 class="mb-2 text-2xl font-bold">Edit {listing.name}</h1>
   {published ? (
     <p class="mb-6 text-slate-600">
@@ -44,5 +48,16 @@ const logoKey = pending?.changes.logoR2Key ?? listing.logoR2Key;
   ) : (
     <p class="mb-6 text-slate-600">This listing is not live yet. Saving sends it for review again.</p>
   )}
-  <ListingForm categories={opts.categories} towns={opts.towns} values={values} allowSuggestions={!published} logoKey={logoKey} errors={errors} submitLabel={published ? 'Submit changes for review' : 'Save'} />
+  <ListingForm
+    categories={opts.categories}
+    towns={opts.towns}
+    values={values}
+    allowSuggestions={!published}
+    logoKey={logoKey}
+    photos={photos ?? []}
+    locked={locked}
+    planHref={planHref}
+    errors={errors}
+    submitLabel={published ? 'Submit changes for review' : 'Save'}
+  />
 </Base>

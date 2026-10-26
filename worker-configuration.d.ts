@@ -10,8 +10,10 @@ interface __BaseEnv_Env {
 	CLERK_SECRET_KEY: string;
 	STRIPE_SECRET_KEY: string;
 	STRIPE_WEBHOOK_SECRET: string;
-	STRIPE_PRICE_FEATURED: string;
-	STRIPE_PRICE_PREMIUM: string;
+	STRIPE_PRICE_PLUS_MONTHLY: string;
+	STRIPE_PRICE_PLUS_YEARLY: string;
+	STRIPE_PRICE_FEATURED_MONTHLY: string;
+	STRIPE_PRICE_FEATURED_YEARLY: string;
 	STRIPE_API_BASE: string;
 }
 declare namespace Cloudflare {
@@ -22,7 +24,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ADMIN_USER_IDS" | "PUBLIC_CLERK_PUBLISHABLE_KEY" | "CLERK_SECRET_KEY" | "STRIPE_SECRET_KEY" | "STRIPE_WEBHOOK_SECRET" | "STRIPE_PRICE_FEATURED" | "STRIPE_PRICE_PREMIUM" | "STRIPE_API_BASE">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ADMIN_USER_IDS" | "PUBLIC_CLERK_PUBLISHABLE_KEY" | "CLERK_SECRET_KEY" | "STRIPE_SECRET_KEY" | "STRIPE_WEBHOOK_SECRET" | "STRIPE_PRICE_PLUS_MONTHLY" | "STRIPE_PRICE_PLUS_YEARLY" | "STRIPE_PRICE_FEATURED_MONTHLY" | "STRIPE_PRICE_FEATURED_YEARLY" | "STRIPE_API_BASE">> {}
 }
 declare module "*.txt" {
 	const value: string;

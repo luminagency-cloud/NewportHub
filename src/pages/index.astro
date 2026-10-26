@@ -1,18 +1,16 @@
 ---
 import Base from '../layouts/Base.astro';
 import SearchForm from '../components/SearchForm.astro';
-import ListingCard from '../components/ListingCard.astro';
 import BannerAd from '../components/BannerAd.astro';
 import CategoryIcon from '../components/CategoryIcon.astro';
-import { allTowns, categoryTree, searchListings } from '../lib/queries';
+import { allTowns, categoryTree } from '../lib/queries';
 
-const [tree, towns, top] = await Promise.all([categoryTree(), allTowns(), searchListings({})]);
+const [tree, towns] = await Promise.all([categoryTree(), allTowns()]);
 const grid = tree.filter((p) => p.total > 0);
 // Subcategories that have their own page get a tile too, most listings first.
 const popular = tree
   .flatMap((p) => p.subs.filter((s) => s.brokenOut && s.own > 0).map((s) => ({ ...s, parentName: p.name, parentIcon: p.icon })))
   .sort((a, b) => b.own - a.own || a.name.localeCompare(b.name));
-const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
 ---
 <Base title="NewportHub" description="Find local businesses in Newport, Middletown, Portsmouth, Jamestown, and across Newport County, RI.">
   <BannerAd placement="home_top" class="mb-6" />
@@ -21,13 +19,6 @@ const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
     <p class="mb-6 text-sky-100">Restaurants, shops, and services in Newport, RI and nearby towns.</p>
     <div class="text-slate-900"><SearchForm categories={tree} towns={towns} /></div>
   </section>
-
-  {spotlight.length > 0 && (
-    <section class="mb-10">
-      <h2 class="mb-4 text-xl font-semibold">Featured businesses</h2>
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{spotlight.map((l) => <ListingCard listing={l} />)}</div>
-    </section>
-  )}
 
   <section class="mb-10">
     <h2 class="mb-4 text-xl font-semibold">Browse by category</h2>

@@ -65,7 +65,9 @@ src/pages/admin/traffic/       site-wide traffic sent, by date range
 src/lib/listing-form.ts        shared listing form validation + diffChanges()
 src/lib/media.ts               logo upload to R2 (magic-byte check, PNG/JPEG/WebP, 1 MB)
 src/lib/billing.ts             Stripe: checkout, portal, webhook verify + handlers, syncSubscription()
-src/lib/billing-tier.ts        pure subscription → tier rules (unit-tested)
+src/lib/plans.ts                 pure plan rules: tier keys, description length, what Basic hides (unit-tested)
+src/lib/photos.ts                pure cover + extra photo changes (unit-tested)
+src/lib/billing-tier.ts          pure subscription → tier rules, monthly and yearly prices (unit-tested)
 src/pages/api/stripe/webhook.ts  Stripe webhook (signature-verified)
 src/pages/account/listings/[id]/upgrade.ts  POST → Stripe Checkout (subscription mode)
 src/pages/account/billing/index.ts          POST → Stripe customer portal
@@ -97,8 +99,10 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   not be a reserved route. Migration `0001_slug_guards.sql` enforces this with triggers; the
   reserved list there must match `RESERVED_SLUGS` in `src/lib/slug.ts`. Adding a new top-level
   route (e.g. `/pricing`) → add it to both places (new migration for the triggers).
-- **Public queries only show `status = 'published'`.** Sort order is tier (premium, featured,
-  free) then name — keep the `tierRank` expression in `queries.ts` as the one place for this.
+- **Public queries only show `status = 'published'`.** Sort order is tier (featured, plus,
+  basic) then name — keep the `tierRank` expression in `queries.ts` as the one place for this.
+  Category pages are the exception: a Featured row (all Featured in that category, shuffled
+  per view), then Plus and Featured cards, then Basic rows. See `categoryPageListings`.
 - **Not found:** `return new Response(null, { status: 404 })` from the page frontmatter. Do not use
   `Astro.rewrite('/404')` — the 404 page is prerendered and the rewrite fails at runtime.
 - **Hours** are stored as JSON: `{ "Monday": [{ "open": "09:00", "close": "17:00" }], "Sunday": [] }`.
@@ -173,20 +177,49 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   listing). Delete is refused while a Stripe subscription is live. A plan set by hand is
   overwritten by the next Stripe event if the listing has a subscription.
 
+## Plans
+
+Basic (free) / Plus ($19/mo or $190/yr) / Featured ($29/mo or $290/yr). Internal keys are
+`basic` / `plus` / `featured`. They used to be `free` / `featured` / `premium`; migration
+`0011_plan_tiers.sql` renames them in that order so the old middle plan (`featured`) becomes
+`plus` before the old top plan (`premium`) takes the name `featured`.
+
+- **Basic:** one cover photo, ~250-character public description, no hours, no social/menu/booking
+  links, no extra photos, no events. Compact rows at the bottom of category pages. Imports are
+  Basic and never store `working_hours`, even when the export has it.
+- **Plus:** larger card in the main list, longer description, hours, links, 4 photos (cover + 3),
+  events. No promotion.
+- **Featured:** everything in Plus, plus a Featured businesses row on that business's own category
+  pages (parent and subcategory, including the town filter). Every Featured listing in the category
+  is in the row, order shuffled per view, horizontal scroll-snap (~3 / 2 / 1). They also appear in
+  the Plus list below.
+- Extra photos are a strip on the listing page only. The owner picks the cover.
+- Downgrading hides paid-only content. It does not delete it.
+- Choose a plan at `/account/listings/<id>/plan`: after an approved claim, after a new submission,
+  and from My businesses (“Change plan”). Basic does not open Stripe. A live subscription goes to
+  the customer portal. Locked owner fields link here with “Available on Plus”.
+- Only Plus and Featured may post events (`canPostEvents`). Facebook shoutouts are posted by hand.
+- The home page does not promote a plan. A home spotlight was removed because it would have
+  promoted Plus, and a Featured-only home row is not part of these plans.
+
 ## Billing (Stripe)
 
-- Tiers `featured` and `premium` are Stripe subscriptions, one per listing. Prices are never in
-  code: `STRIPE_PRICE_FEATURED` / `STRIPE_PRICE_PREMIUM` hold a price id (`price_…`) or a product
-  id (`prod_…`, which uses that product's default price). A tier with no id is not offered.
-- **Upgrade** (owner dashboard, published listings only) → Checkout in subscription mode.
-  `metadata` and `subscription_data.metadata` carry `listing_id`, so every later subscription event
-  names its listing. A listing that already has a live subscription goes to the portal instead.
-  One Stripe customer per owner (reused across their listings), so one portal shows all plans.
+- Plus and Featured are Stripe subscriptions, one per listing. Prices are never in code.
+  `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY`, `STRIPE_PRICE_FEATURED_MONTHLY`, and
+  `STRIPE_PRICE_FEATURED_YEARLY` each hold a price id (`price_…`) or a product id (`prod_…`).
+  A product id uses that product's active price for the same interval. A plan/interval with no id
+  is not offered. The plan page shows $19/$190 and $29/$290; create Stripe prices at those amounts.
+- **Choose plan** (published listings only) → Checkout in subscription mode for the selected
+  interval. `metadata` and `subscription_data.metadata` carry `listing_id`, so every later
+  subscription event names its listing. A listing that already has a live subscription goes to the
+  portal instead. One Stripe customer per owner (reused across their listings), so one portal
+  shows all plans.
 - **Webhook** `/api/stripe/webhook` verifies the signature on the raw body. Handled:
   `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`,
   `invoice.payment_failed`. Every handler re-reads the subscription from Stripe and derives the tier
-  (`tierForSubscription`): `active`/`trialing` on a configured price → that tier, anything else →
-  `free`. So late, duplicate, or out-of-order events still end correct. `invoice.payment_failed`
+  (`tierForSubscription`): `active`/`trialing` on a configured price → that tier (Featured wins
+  over Plus; month and year are the same tier), anything else → `basic`. So late, duplicate, or
+  out-of-order events still end correct. `invoice.payment_failed`
   downgrades at once; a successful retry restores the tier through `customer.subscription.updated`.
 - **Never delete or unpublish a listing for billing reasons.** Billing only changes `tier` and the
   `stripe_*` / `subscription_status` / `current_period_end` / `cancel_at_period_end` columns.
@@ -243,8 +276,9 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 
 The steps follow the Stripe CLI docs.
 
-1. Test-mode keys in `.dev.vars`: `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_PRICE_FEATURED`,
-   `STRIPE_PRICE_PREMIUM` (test-mode price or product ids). Leave `STRIPE_API_BASE` unset.
+1. Test-mode keys in `.dev.vars`: `STRIPE_SECRET_KEY=sk_test_…`, and the four
+   `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY`, `STRIPE_PRICE_FEATURED_MONTHLY`,
+   `STRIPE_PRICE_FEATURED_YEARLY` (test-mode price or product ids). Leave `STRIPE_API_BASE` unset.
 2. `stripe login`, then `stripe listen --forward-to http://127.0.0.1:8787/api/stripe/webhook`.
    It prints a `whsec_…` secret: put it in `.dev.vars` as `STRIPE_WEBHOOK_SECRET`.
 3. In another terminal: `npm run preview` (rebuilds and serves http://127.0.0.1:8787).
@@ -272,7 +306,8 @@ Without a Stripe account, `STRIPE_API_BASE=http://127.0.0.1:12111` (honoured onl
 | `ADMIN_USER_IDS` | `.dev.vars`; `npx wrangler secret put ADMIN_USER_IDS` | Clerk user ids |
 | `STRIPE_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put STRIPE_SECRET_KEY` | secret; `sk_test_…` locally |
 | `STRIPE_WEBHOOK_SECRET` | `.dev.vars` (from `stripe listen`); secret in production (from the dashboard endpoint) | secret |
-| `STRIPE_PRICE_FEATURED`, `STRIPE_PRICE_PREMIUM` | `.dev.vars`; Worker var or secret | `price_…` or `prod_…` |
+| `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY` | `.dev.vars`; Worker var or secret | Plus price id (`price_…`) or product id (`prod_…`) |
+| `STRIPE_PRICE_FEATURED_MONTHLY`, `STRIPE_PRICE_FEATURED_YEARLY` | `.dev.vars`; Worker var or secret | Featured price id or product id |
 | `STRIPE_API_BASE` | `.dev.vars` only | test-only mock API base; ignored for live keys |
 
 The names are Astro's: `PUBLIC_CLERK_PUBLISHABLE_KEY`, not the `NEXT_PUBLIC_…` name the Clerk
@@ -338,7 +373,7 @@ newporthub.com.
 ## Seed import (Outscraper)
 
 `scripts/seed-outscraper.ts` (`npm run import:local|import:remote -- <file>`) reads an Outscraper Google Maps export (.xlsx as downloaded, or .csv), writes `data/seed.sql`, and runs it
-with `wrangler d1 execute`. Seed categories first. New listings: `status=published`, `tier=free`,
+with `wrangler d1 execute`. Seed categories first. New listings: `status=published`, `tier=basic`,
 unclaimed. Rows are matched on `place_id` (`source_place_id` column); re-running refreshes source
 fields **only on unclaimed listings never edited in admin** (no `listing_changes` row), so owner and admin edits survive, and never touches tier, status, owner,
 or Stripe fields. Skipped and reported: duplicates in the file, permanently closed, missing

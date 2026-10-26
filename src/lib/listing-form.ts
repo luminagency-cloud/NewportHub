@@ -1,5 +1,6 @@
 import { STATUSES, TIERS, type Hours, type ListingChanges } from '../db/schema';
 import { hoursFromForm } from './hours-parse';
+import { PAID_DESCRIPTION_LIMIT } from './plans';
 import { slugify } from './slug';
 
 export interface ListingFormValues {
@@ -14,6 +15,9 @@ export interface ListingFormValues {
   email: string | null;
   description: string | null;
   hours: Hours | null;
+  socialUrl: string | null;
+  menuUrl: string | null;
+  bookingUrl: string | null;
 }
 
 const text = (form: FormData, key: string, max: number) => {
@@ -24,6 +28,21 @@ const id = (form: FormData, key: string) => {
   const n = Number(form.get(key));
   return Number.isInteger(n) && n > 0 ? n : null;
 };
+
+/** http(s) URL, or null. Bare domains get https:// and no trailing slash. */
+function httpUrl(raw: string | null, label: string, errors: string[]): string | null {
+  if (!raw) return null;
+  let website = raw;
+  if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
+  try {
+    const u = new URL(website);
+    if (!u.hostname.includes('.')) throw new Error();
+    return u.pathname === '/' && !u.search && !u.hash ? u.origin : u.href;
+  } catch {
+    errors.push(`${label} must be a valid address, e.g. https://example.com`);
+    return raw;
+  }
+}
 
 /**
  * Validate the shared listing form. `allowSuggestions` lets a new submission name a category or
@@ -57,18 +76,7 @@ export function parseListingForm(
     errors.push('Choose a town.');
   }
 
-  let website = text(form, 'website', 300);
-  if (website) {
-    if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
-    try {
-      const u = new URL(website);
-      if (!u.hostname.includes('.')) throw new Error();
-      // Bare domains stay bare (no trailing slash), so an untouched website is not reported as changed.
-      website = u.pathname === '/' && !u.search && !u.hash ? u.origin : u.href;
-    } catch {
-      errors.push('Website must be a valid address, e.g. https://example.com');
-    }
-  }
+  const website = httpUrl(text(form, 'website', 300), 'Website', errors);
 
   const email = text(form, 'email', 200);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('Email address is not valid.');
@@ -87,14 +95,20 @@ export function parseListingForm(
       phone: text(form, 'phone', 40),
       website,
       email: email?.toLowerCase() ?? null,
-      description: text(form, 'description', 2000),
+      description: text(form, 'description', PAID_DESCRIPTION_LIMIT),
       hours,
+      socialUrl: httpUrl(text(form, 'socialUrl', 300), 'Social link', errors),
+      menuUrl: httpUrl(text(form, 'menuUrl', 300), 'Menu link', errors),
+      bookingUrl: httpUrl(text(form, 'bookingUrl', 300), 'Booking link', errors),
     },
     errors,
   };
 }
 
-const EDITABLE = ['name', 'categoryId', 'townId', 'address', 'phone', 'website', 'email', 'description', 'hours', 'logoR2Key'] as const;
+const EDITABLE = [
+  'name', 'categoryId', 'townId', 'address', 'phone', 'website', 'email', 'description', 'hours',
+  'socialUrl', 'menuUrl', 'bookingUrl', 'logoR2Key', 'photos',
+] as const;
 
 /** Only the fields that differ from the current listing. Empty object = nothing changed. */
 export function diffChanges(current: Record<string, unknown>, next: ListingChanges): ListingChanges {

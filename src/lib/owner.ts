@@ -4,9 +4,22 @@ import type { SessionUser } from './auth';
 import { db } from './db';
 import { categoryTree } from './queries';
 import { diffChanges, type ListingFormValues } from './listing-form';
+import { applyPhotoForm, photoFormInput } from './listing-photos';
 import { deleteMedia, uploadLogo } from './media';
+import { photoKeySet, unusedPhotoKeys, type PhotoSet } from './photos';
+import { isPaid, restrictPaidFields, type PaidContent } from './plans';
 import { slugify } from './slug';
 import { matchingEmail } from './verify';
+
+const emptyPaid = (): PaidContent => ({ description: null, hours: null, socialUrl: null, menuUrl: null, bookingUrl: null });
+
+const paidOf = (l: Pick<Listing, 'description' | 'hours' | 'socialUrl' | 'menuUrl' | 'bookingUrl'>): PaidContent => ({
+  description: l.description,
+  hours: l.hours,
+  socialUrl: l.socialUrl,
+  menuUrl: l.menuUrl,
+  bookingUrl: l.bookingUrl,
+});
 
 export async function getListing(id: number): Promise<Listing | undefined> {
   return (await db().select().from(listings).where(eq(listings.id, id)).limit(1))[0];
@@ -105,16 +118,17 @@ async function uniqueSlug(base: string) {
   return slug;
 }
 
-/** A brand-new listing from an owner. It stays pending (not public) until an admin approves it. */
+/** A brand-new listing from an owner. It stays pending (not public) until an admin approves it. New listings start on Basic. */
 export async function submitListing(user: SessionUser, v: ListingFormValues, logo: FormDataEntryValue | null) {
-  const townName = v.suggestedTown ?? (v.townId ? (await db().select({ name: towns.name }).from(towns).where(eq(towns.id, v.townId)))[0]?.name : '') ?? '';
+  const safe = restrictPaidFields('basic', v, emptyPaid());
+  const townName = safe.suggestedTown ?? (safe.townId ? (await db().select({ name: towns.name }).from(towns).where(eq(towns.id, safe.townId)))[0]?.name : '') ?? '';
   const [row] = await db()
     .insert(listings)
     .values({
-      ...v,
-      slug: await uniqueSlug(`${v.name} ${townName}`),
+      ...safe,
+      slug: await uniqueSlug(`${safe.name} ${townName}`),
       status: 'pending',
-      tier: 'free',
+      tier: 'basic',
       ownerUserId: user.id,
       claimedAt: new Date(),
     })
@@ -140,40 +154,60 @@ export async function saveOwnerEdit(
   user: SessionUser,
   listing: Listing,
   v: ListingFormValues,
-  logo: FormDataEntryValue | null,
+  form: FormData,
 ): Promise<{ result: 'updated' | 'queued' | 'unchanged'; logoError?: string }> {
-  const up = await uploadLogo(logo, listing.id);
+  const safe = restrictPaidFields(listing.tier, v, paidOf(listing));
+  const direct = listing.status === 'pending' || listing.status === 'rejected';
+  const existing = direct ? undefined : await openEdit(listing.id);
+  const working: PhotoSet = direct
+    ? { cover: listing.logoR2Key, extras: listing.photos ?? [] }
+    : {
+        cover: existing && 'logoR2Key' in existing.changes ? (existing.changes.logoR2Key ?? null) : listing.logoR2Key,
+        extras: existing && 'photos' in existing.changes ? (existing.changes.photos ?? []) : (listing.photos ?? []),
+      };
+  const applied = await applyPhotoForm(listing.id, working, photoFormInput(form, isPaid(listing.tier)));
+  const photos = applied.photos;
+  const photoValue = photos.extras.length ? photos.extras : null;
 
-  if (listing.status === 'pending' || listing.status === 'rejected') {
+  if (direct) {
     await db()
       .update(listings)
-      .set({ ...v, ...(up.key ? { logoR2Key: up.key } : {}), status: 'pending', updatedAt: new Date() })
+      .set({ ...safe, logoR2Key: photos.cover, photos: photoValue, status: 'pending', updatedAt: new Date() })
       .where(eq(listings.id, listing.id));
-    if (up.key) await deleteMedia(listing.logoR2Key);
-    return { result: 'updated', logoError: up.error };
+    if (!applied.error) {
+      for (const key of unusedPhotoKeys(photoKeySet(listing.logoR2Key, listing.photos), photoKeySet(photos.cover, photos.extras))) {
+        await deleteMedia(key);
+      }
+    }
+    return { result: 'updated', logoError: applied.error };
   }
 
-  const { suggestedCategory: _c, suggestedTown: _t, ...fields } = v;
-  const next: ListingChanges = { ...fields, ...(up.key ? { logoR2Key: up.key } : {}) };
-  const existing = await openEdit(listing.id);
-  // A new upload replaces a logo that was only waiting in the earlier edit.
-  if (up.key && existing?.changes.logoR2Key && existing.changes.logoR2Key !== listing.logoR2Key) {
-    await deleteMedia(existing.changes.logoR2Key);
-  } else if (!up.key && existing?.changes.logoR2Key) {
-    next.logoR2Key = existing.changes.logoR2Key;
+  const { suggestedCategory: _c, suggestedTown: _t, ...fields } = safe;
+  const next: ListingChanges = { ...fields };
+  if (!applied.error) {
+    if (photos.cover !== listing.logoR2Key) next.logoR2Key = photos.cover;
+    if (JSON.stringify(photoValue) !== JSON.stringify(listing.photos ?? null)) next.photos = photoValue;
+    const live = photoKeySet(listing.logoR2Key, listing.photos);
+    const after = photoKeySet(photos.cover, photos.extras);
+    for (const key of unusedPhotoKeys(photoKeySet(working.cover, working.extras), after)) {
+      if (!live.has(key)) await deleteMedia(key);
+    }
+  } else if (existing) {
+    if ('logoR2Key' in existing.changes) next.logoR2Key = existing.changes.logoR2Key;
+    if ('photos' in existing.changes) next.photos = existing.changes.photos;
   }
   const changes = diffChanges(listing, next);
 
   if (!Object.keys(changes).length) {
     if (existing) await db().delete(pendingEdits).where(eq(pendingEdits.id, existing.id));
-    return { result: 'unchanged', logoError: up.error };
+    return { result: 'unchanged', logoError: applied.error };
   }
   if (existing) {
     await db().update(pendingEdits).set({ changes, userEmail: user.email, updatedAt: new Date() }).where(eq(pendingEdits.id, existing.id));
   } else {
     await db().insert(pendingEdits).values({ listingId: listing.id, userId: user.id, userEmail: user.email, changes });
   }
-  return { result: 'queued', logoError: up.error };
+  return { result: 'queued', logoError: applied.error };
 }
 
 /**

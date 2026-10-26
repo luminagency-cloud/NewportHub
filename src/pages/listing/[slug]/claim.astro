@@ -13,7 +13,10 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const message = String(form.get('message') ?? '').trim().slice(0, 1000) || null;
   const r = await createClaim(user, listing, message);
-  if ('result' in r) return Astro.redirect(`/account?done=claim-${r.result}`, 303);
+  if ('result' in r) {
+    if (r.result === 'approved') return Astro.redirect(`/account/listings/${listing.id}/plan?from=claim`, 303);
+    return Astro.redirect('/account?done=claim-pending', 303);
+  }
   error = r.error;
 }
 

@@ -1,0 +1,90 @@
+---
+import CategoryIcon from './CategoryIcon.astro';
+import { cardCategory, PAGE_SIZE, type ListingCard } from '../lib/queries';
+import { publicDescription, splitCategoryPage } from '../lib/plans';
+
+interface Props {
+  rows: ListingCard[];
+  total: number;
+  page: number;
+}
+const { rows, total, page } = Astro.props;
+const { main, basic } = splitCategoryPage(rows);
+const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+function pageHref(n: number) {
+  const u = new URL(Astro.url);
+  if (n === 1) u.searchParams.delete('page');
+  else u.searchParams.set('page', String(n));
+  return u.pathname + u.search;
+}
+---
+{rows.length === 0 ? (
+  <p class="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500">No listings found.</p>
+) : (
+  <>
+    {main.length > 0 && (
+      <div class="grid gap-4 sm:grid-cols-2">
+        {main.map((l) => {
+          const cat = cardCategory(l);
+          const description = publicDescription(l.description, l.tier);
+          return (
+            <article class="flex gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              {l.logoR2Key ? (
+                <img src={`/media/${l.logoR2Key}`} alt="" width="80" height="80" loading="lazy" class="h-20 w-20 shrink-0 rounded object-contain" />
+              ) : (
+                <span class="flex h-20 w-20 shrink-0 items-center justify-center rounded bg-sky-50 text-sky-700/70">
+                  <CategoryIcon icon={l.categoryIcon} parentIcon={l.parentIcon} class="h-8 w-8" />
+                </span>
+              )}
+              <div class="min-w-0">
+                {l.tier === 'featured' && <span class="mb-1 inline-block rounded bg-amber-400 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-950">Featured</span>}
+                <h3 class="text-lg font-semibold leading-tight">
+                  <a href={`/listing/${l.slug}`} class="hover:underline">{l.name}</a>
+                </h3>
+                <p class="text-sm text-slate-600">
+                  <a href={`/${cat.link.slug}/`} class="hover:underline">{cat.label}</a>
+                  {' · '}
+                  <a href={`/${l.townSlug}/`} class="hover:underline">{l.townName}</a>
+                </p>
+                {description && <p class="mt-2 line-clamp-3 text-sm text-slate-700">{description}</p>}
+                <div class="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                  {l.phone && <a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} class="text-sky-700 hover:underline">{l.phone}</a>}
+                  {l.website && <a href={l.website} rel="noopener" target="_blank" class="rounded-md bg-sky-700 px-3 py-1 font-medium text-white hover:bg-sky-800">Website</a>}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    )}
+
+    {basic.length > 0 && (
+      <section class={main.length > 0 ? 'mt-8' : ''}>
+        {main.length > 0 && <h2 class="mb-3 text-lg font-semibold">More businesses</h2>}
+        <ul class="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+          {basic.map((l) => {
+            const cat = cardCategory(l);
+            return (
+              <li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 text-sm">
+                <a href={`/listing/${l.slug}`} class="text-base font-medium hover:underline">{l.name}</a>
+                <a href={`/${cat.link.slug}/`} class="text-slate-600 hover:underline">{cat.label}</a>
+                <a href={`/${l.townSlug}/`} class="text-slate-600 hover:underline">{l.townName}</a>
+                {l.phone && <a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} class="text-sky-700 hover:underline">{l.phone}</a>}
+                {l.website && <a href={l.website} rel="nofollow noopener" target="_blank" class="text-sky-700 hover:underline">Website</a>}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    )}
+  </>
+)}
+
+{pages > 1 && (
+  <nav class="mt-8 flex items-center justify-center gap-4 text-sm" aria-label="Pagination">
+    {page > 1 && <a href={pageHref(page - 1)} class="rounded border px-3 py-1 hover:bg-white">← Previous</a>}
+    <span class="text-slate-500">Page {page} of {pages}</span>
+    {page < pages && <a href={pageHref(page + 1)} class="rounded border px-3 py-1 hover:bg-white">Next →</a>}
+  </nav>
+)}
