@@ -113,9 +113,11 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 - Scripts run in Node and have their own `scripts/tsconfig.json`; app code must not import `node:*`.
 - **Tests:** `npm test` runs `src/lib/*.test.ts` with Node's test runner (pure functions only).
 - **D1 enforces foreign keys.** drizzle-kit's table-rebuild migrations emit `PRAGMA foreign_keys=OFF`,
-  which does not work on D1; replace it with `PRAGMA defer_foreign_keys = on` and check the
-  generated `INSERT … SELECT` (in 0002 it selected new columns from the old table). Test a rebuild
-  migration on a seeded local DB before applying it remotely.
+  which does not work on D1. `PRAGMA defer_foreign_keys = on` does not stop `ON DELETE CASCADE`
+  either: dropping a parent still deletes `slug_redirects` and `listing_stats`, and a `claims` or
+  `pending_edits` row fails the commit. Add columns in place when those rows must survive
+  (`0011_plan_tiers.sql` does). Check a generated `INSERT … SELECT` (in 0002 it selected new
+  columns from the old table). Test a rebuild migration on a seeded local DB before applying it remotely.
 
 ## Categories
 
@@ -185,7 +187,10 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 Basic (free) / Plus ($15/mo or $149/yr) / Featured ($39/mo or $350/yr). Internal keys are
 `basic` / `plus` / `featured`. They used to be `free` / `featured` / `premium`; migration
 `0011_plan_tiers.sql` renames them in that order so the old middle plan (`featured`) becomes
-`plus` before the old top plan (`premium`) takes the name `featured`.
+`plus` before the old top plan (`premium`) takes the name `featured`. It adds `social_url`,
+`menu_url`, `booking_url`, and `photos` with `ALTER TABLE` and does not rebuild `listings`.
+SQLite cannot change the column default without a rebuild, so a trigger rewrites an inserted
+`tier` of `free` to `basic`.
 
 - **Basic:** one cover photo, ~250-character public description, no hours, no social/menu/booking
   links, no extra photos, no events. Compact rows at the bottom of category pages. Imports are

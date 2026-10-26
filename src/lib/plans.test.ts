@@ -35,7 +35,8 @@ test('migration renames old featured to plus before premium reuses the featured 
   const toFeatured = sql.indexOf("SET `tier` = 'featured' WHERE `tier` = 'premium'");
   const toBasic = sql.indexOf("SET `tier` = 'basic' WHERE `tier` = 'free'");
   assert.ok(toPlus !== -1 && toFeatured !== -1 && toBasic !== -1);
-  assert.ok(toPlus < toFeatured);
+  assert.ok(toPlus < toFeatured && toFeatured < toBasic);
+  assert.doesNotMatch(sql, /^\s*DROP TABLE/m);
 });
 
 test('Basic public description is about 250 characters and the stored text is kept on save', () => {
