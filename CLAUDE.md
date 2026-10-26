@@ -129,8 +129,11 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   listing** (admin approvals do; the import runs the same SQL). Forgetting it leaves pages stale.
 - Slugs are flat and share one namespace with towns (slug-clash triggers). Nested URLs would clash
   with `/category/town/`.
-- **Imports file on the parent only** (a subcategory alias hit files on its parent); choosing a
-  subcategory is up to the owner (a paid-plan feature, LA-190).
+- **Imports file on the parent only** (a subcategory alias hit files on its parent). Choosing a
+  subcategory is a Plus/Featured feature (LA-190). The Basic owner form lists parents, and the
+  listing's current subcategory when it already has one. A Basic save cannot move onto a different
+  subcategory; a new Basic listing that submits one is filed on that subcategory's parent. Downgrading
+  does not clear the subcategory.
 - **The owner picker only offers categories with published listings** (a parent counts its
   subcategories), plus the listing's current one. New categories come in through "suggest a new
   category"; the admin approval picker shows the full tree.

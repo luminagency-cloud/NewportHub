@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   BASIC_DESCRIPTION_LIMIT,
   LEGACY_TIER_MAP,
+  categoryForTier,
   descriptionForSave,
   hoursImportedForBasic,
   publicDescription,
@@ -63,6 +64,22 @@ test('Basic saves do not change hours or links', () => {
   const paid = restrictPaidFields('plus', { ...stored, hours: null, socialUrl: null, menuUrl: null, bookingUrl: null }, stored);
   assert.equal(paid.hours, null);
   assert.equal(paid.socialUrl, null);
+});
+
+test('Basic can stay on its subcategory and cannot move onto a different one', () => {
+  const parents = new Map<number, number | null>([
+    [1, null],
+    [2, 1],
+    [3, 1],
+  ]);
+  assert.equal(categoryForTier('basic', 1, 1, parents), 1);
+  assert.equal(categoryForTier('basic', 2, 2, parents), 2);
+  assert.equal(categoryForTier('basic', 3, 2, parents), 2);
+  assert.equal(categoryForTier('basic', 1, 2, parents), 1);
+  assert.equal(categoryForTier('basic', 2, null, parents), 1);
+  assert.equal(categoryForTier('plus', 3, 2, parents), 3);
+  assert.equal(categoryForTier('featured', 3, null, parents), 3);
+  assert.equal(categoryForTier('basic', null, 2, parents), null);
 });
 
 test('Basic import drops hours even when the export has them', () => {

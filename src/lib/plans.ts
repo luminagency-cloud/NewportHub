@@ -87,6 +87,25 @@ export interface PaidContent {
  * Fields a Basic owner is not allowed to change. Submitted values for those fields are
  * dropped and the stored values kept (hidden on the site until the listing is paid again).
  */
+/**
+ * Category a Basic owner is allowed to file on. Parents are always allowed. A subcategory is
+ * allowed only when the listing is already on it (a downgrade keeps it). A new Basic listing
+ * that submits a subcategory is filed on that subcategory's parent. Paid plans can choose any.
+ * `parentById` maps a category id to its parent; a parent category maps to null.
+ */
+export function categoryForTier(
+  tier: Tier,
+  submittedId: number | null,
+  storedId: number | null,
+  parentById: ReadonlyMap<number, number | null>,
+): number | null {
+  if (submittedId == null || isPaid(tier)) return submittedId;
+  const parent = parentById.get(submittedId);
+  if (parent == null) return submittedId;
+  if (submittedId === storedId) return submittedId;
+  return storedId ?? parent;
+}
+
 export function restrictPaidFields<T extends PaidContent>(tier: Tier, next: T, stored: PaidContent): T {
   const description = descriptionForSave(tier, next.description, stored.description);
   if (isPaid(tier)) return { ...next, description };

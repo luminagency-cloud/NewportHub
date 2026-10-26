@@ -28,7 +28,7 @@ interface Props {
   logoKey?: string | null;
   /** Extra photos besides the cover. Hidden from the public on Basic, still shown here when editable. */
   photos?: string[] | null;
-  /** Basic owners cannot edit hours, links, or extra photos. */
+  /** Basic owners cannot edit hours, links, extra photos, or move onto a subcategory. */
   locked?: boolean;
   /** Choose-your-plan page. The locked-field link. */
   planHref?: string;
@@ -45,6 +45,9 @@ const input = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2
 const label = 'block text-sm font-medium text-slate-700';
 const optional = 'font-normal text-slate-500';
 const catNew = allowSuggestions && !!values.suggestedCategory;
+const categoryGroups = locked
+  ? categories.map((g) => ({ ...g, subs: g.subs.filter((s) => s.id === values.categoryId) }))
+  : categories;
 const townNew = allowSuggestions && !!values.suggestedTown;
 ---
 <form method="post" enctype="multipart/form-data" class="space-y-5">
@@ -68,11 +71,17 @@ const townNew = allowSuggestions && !!values.suggestedTown;
           name="categoryId"
           class={input}
           data-other="suggestedCategoryWrap"
-          groups={categories}
+          groups={categoryGroups}
           selected={values.categoryId}
           extra={allowSuggestions ? { value: 'new', label: 'Something else (suggest a new category)', selected: catNew } : undefined}
         />
       </label>
+      {locked && (
+        <p class="mt-1 text-xs font-normal text-slate-500">
+          Choosing a subcategory is {planHref ? <a href={planHref} class="font-medium text-sky-700 hover:underline">Available on Plus</a> : 'Available on Plus'}.
+          {categoryGroups.some((g) => g.subs.length > 0) ? ' This listing keeps its current subcategory.' : ''}
+        </p>
+      )}
       {allowSuggestions && (
         <label id="suggestedCategoryWrap" class={`${label} mt-2`} hidden={!catNew}>New category name
           <input name="suggestedCategory" maxlength="60" value={values.suggestedCategory ?? ''} class={input} />

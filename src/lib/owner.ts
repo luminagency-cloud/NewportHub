@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { claims, listings, pendingEdits, towns, type Listing, type ListingChanges } from '../db/schema';
+import { categories, claims, listings, pendingEdits, towns, type Listing, type ListingChanges } from '../db/schema';
 import type { SessionUser } from './auth';
 import { db } from './db';
 import { categoryTree } from './queries';
@@ -7,11 +7,16 @@ import { diffChanges, type ListingFormValues } from './listing-form';
 import { applyPhotoForm, photoFormInput } from './listing-photos';
 import { deleteMedia, uploadLogo } from './media';
 import { photoKeySet, unusedPhotoKeys, type PhotoSet } from './photos';
-import { isPaid, restrictPaidFields, type PaidContent } from './plans';
+import { categoryForTier, isPaid, restrictPaidFields, type PaidContent } from './plans';
 import { slugify } from './slug';
 import { matchingEmail } from './verify';
 
 const emptyPaid = (): PaidContent => ({ description: null, hours: null, socialUrl: null, menuUrl: null, bookingUrl: null });
+
+async function categoryParents() {
+  const rows = await db().select({ id: categories.id, parentId: categories.parentId }).from(categories);
+  return new Map(rows.map((r) => [r.id, r.parentId]));
+}
 
 const paidOf = (l: Pick<Listing, 'description' | 'hours' | 'socialUrl' | 'menuUrl' | 'bookingUrl'>): PaidContent => ({
   description: l.description,
@@ -121,11 +126,13 @@ async function uniqueSlug(base: string) {
 /** A brand-new listing from an owner. It stays pending (not public) until an admin approves it. New listings start on Basic. */
 export async function submitListing(user: SessionUser, v: ListingFormValues, logo: FormDataEntryValue | null) {
   const safe = restrictPaidFields('basic', v, emptyPaid());
+  const categoryId = categoryForTier('basic', safe.categoryId, null, await categoryParents());
   const townName = safe.suggestedTown ?? (safe.townId ? (await db().select({ name: towns.name }).from(towns).where(eq(towns.id, safe.townId)))[0]?.name : '') ?? '';
   const [row] = await db()
     .insert(listings)
     .values({
       ...safe,
+      categoryId,
       slug: await uniqueSlug(`${safe.name} ${townName}`),
       status: 'pending',
       tier: 'basic',
@@ -157,6 +164,10 @@ export async function saveOwnerEdit(
   form: FormData,
 ): Promise<{ result: 'updated' | 'queued' | 'unchanged'; logoError?: string }> {
   const safe = restrictPaidFields(listing.tier, v, paidOf(listing));
+  const filed = {
+    ...safe,
+    categoryId: categoryForTier(listing.tier, safe.categoryId, listing.categoryId, await categoryParents()),
+  };
   const direct = listing.status === 'pending' || listing.status === 'rejected';
   const existing = direct ? undefined : await openEdit(listing.id);
   const working: PhotoSet = direct
@@ -172,7 +183,7 @@ export async function saveOwnerEdit(
   if (direct) {
     await db()
       .update(listings)
-      .set({ ...safe, logoR2Key: photos.cover, photos: photoValue, status: 'pending', updatedAt: new Date() })
+      .set({ ...filed, logoR2Key: photos.cover, photos: photoValue, status: 'pending', updatedAt: new Date() })
       .where(eq(listings.id, listing.id));
     if (!applied.error) {
       for (const key of unusedPhotoKeys(photoKeySet(listing.logoR2Key, listing.photos), photoKeySet(photos.cover, photos.extras))) {
@@ -182,7 +193,7 @@ export async function saveOwnerEdit(
     return { result: 'updated', logoError: applied.error };
   }
 
-  const { suggestedCategory: _c, suggestedTown: _t, ...fields } = safe;
+  const { suggestedCategory: _c, suggestedTown: _t, ...fields } = filed;
   const next: ListingChanges = { ...fields };
   if (!applied.error) {
     if (photos.cover !== listing.logoR2Key) next.logoR2Key = photos.cover;
