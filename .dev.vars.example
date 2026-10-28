@@ -1,5 +1,6 @@
 # Copy to .dev.vars. Wrangler reads .dev.vars for `npm run dev` and `npm run preview`.
-# See .env.example for what each variable is. Stripe price ids are not created yet.
+# See .env.example for what each variable is. These override the live price ids in wrangler.toml.
+# Use test-mode price ids locally, or leave one empty to hide that option.
 
 PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=

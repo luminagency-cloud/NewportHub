@@ -213,11 +213,12 @@ SQLite cannot change the column default without a rebuild, so a trigger rewrites
 
 ## Billing (Stripe)
 
-- Plus and Featured are Stripe subscriptions, one per listing. Prices are never in code.
-  `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY`, `STRIPE_PRICE_FEATURED_MONTHLY`, and
-  `STRIPE_PRICE_FEATURED_YEARLY` each hold a price id (`price_…`) or a product id (`prod_…`).
-  A product id uses that product's active price for the same interval. A plan/interval with no id
-  is not offered. The plan page shows Plus $15/$149 and Featured $39/$350; create Stripe prices at those amounts.
+- Plus and Featured are Stripe subscriptions, one per listing. Price amounts are fixed on the
+  plan page (Plus $15/$149, Featured $39/$350). The live price ids are plain `[vars]` in
+  `wrangler.toml` (NewportHub account `acct_1UVVEACQlLtUg0Tw`): `STRIPE_PRICE_PLUS_MONTHLY`,
+  `STRIPE_PRICE_PLUS_YEARLY`, `STRIPE_PRICE_FEATURED_MONTHLY`, and `STRIPE_PRICE_FEATURED_YEARLY`.
+  A value may instead be a product id (`prod_…`), which uses that product's active price for the
+  same interval. A plan/interval with no id is not offered. Local `.dev.vars` overrides the live ids.
 - **Choose plan** (published listings only) → Checkout in subscription mode for the selected
   interval. `metadata` and `subscription_data.metadata` carry `listing_id`, so every later
   subscription event names its listing. A listing that already has a live subscription goes to the
@@ -234,14 +235,15 @@ SQLite cannot change the column default without a rebuild, so a trigger rewrites
   `stripe_*` / `subscription_status` / `current_period_end` / `cancel_at_period_end` columns.
 - Response codes: 400 bad signature, 500 handler error (Stripe retries), 200 applied or ignored,
   503 billing not configured.
-- **Stripe dashboard setup (production, NewportHub's own Stripe account):** four recurring prices,
-  Plus $15/month (`STRIPE_PRICE_PLUS_MONTHLY`), Plus $149/year (`STRIPE_PRICE_PLUS_YEARLY`),
-  Featured $39/month (`STRIPE_PRICE_FEATURED_MONTHLY`), and Featured $350/year
-  (`STRIPE_PRICE_FEATURED_YEARLY`); Customer portal enabled (Settings → Billing → Customer portal),
-  allowing cancel and switching between Plus and Featured and between monthly and yearly; a webhook endpoint `https://newporthub.com/api/stripe/webhook` with the
-  four events above — its signing secret is `STRIPE_WEBHOOK_SECRET`. Use the same API version as the
-  SDK (`stripe` v23 → `2026-09-30.endive`); the code reads invoice → subscription from
-  `invoice.parent.subscription_details` and period end from subscription items.
+- **Stripe dashboard setup (production, NewportHub's own Stripe account `acct_1UVVEACQlLtUg0Tw`):**
+  the four live prices are already created and their ids are the `[vars]` in `wrangler.toml`
+  (Plus $15/month, Plus $149/year, Featured $39/month, Featured $350/year). Still set by hand:
+  `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` on the Worker, Customer portal
+  (Settings → Billing → Customer portal) allowing cancel and switching between Plus and Featured
+  and between monthly and yearly, and a webhook endpoint `https://newporthub.com/api/stripe/webhook`
+  with the four events above — its signing secret is `STRIPE_WEBHOOK_SECRET`. Use the same API
+  version as the SDK (`stripe` v23 → `2026-09-30.endive`); the code reads invoice → subscription
+  from `invoice.parent.subscription_details` and period end from subscription items.
 
 ## Banner ads
 
@@ -289,7 +291,8 @@ The steps follow the Stripe CLI docs.
 
 1. Test-mode keys in `.dev.vars`: `STRIPE_SECRET_KEY=sk_test_…`, and the four
    `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY`, `STRIPE_PRICE_FEATURED_MONTHLY`,
-   `STRIPE_PRICE_FEATURED_YEARLY` (test-mode price or product ids). Leave `STRIPE_API_BASE` unset.
+   `STRIPE_PRICE_FEATURED_YEARLY` (test-mode price or product ids). `.dev.vars` overrides the live
+   ids in `wrangler.toml`. Leave `STRIPE_API_BASE` unset.
 2. `stripe login`, then `stripe listen --forward-to http://127.0.0.1:8787/api/stripe/webhook`.
    It prints a `whsec_…` secret: put it in `.dev.vars` as `STRIPE_WEBHOOK_SECRET`.
 3. In another terminal: `npm run preview` (rebuilds and serves http://127.0.0.1:8787).
@@ -317,8 +320,8 @@ Without a Stripe account, `STRIPE_API_BASE=http://127.0.0.1:12111` (honoured onl
 | `ADMIN_USER_IDS` | `.dev.vars`; `npx wrangler secret put ADMIN_USER_IDS` | Clerk user ids |
 | `STRIPE_SECRET_KEY` | `.dev.vars`; `npx wrangler secret put STRIPE_SECRET_KEY` | secret; `sk_test_…` locally |
 | `STRIPE_WEBHOOK_SECRET` | `.dev.vars` (from `stripe listen`); secret in production (from the dashboard endpoint) | secret |
-| `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY` | `.dev.vars`; Worker var or secret | Plus $15/month and $149/year. Price id (`price_…`) or product id (`prod_…`) |
-| `STRIPE_PRICE_FEATURED_MONTHLY`, `STRIPE_PRICE_FEATURED_YEARLY` | `.dev.vars`; Worker var or secret | Featured $39/month and $350/year. Price id or product id |
+| `STRIPE_PRICE_PLUS_MONTHLY`, `STRIPE_PRICE_PLUS_YEARLY` | `wrangler.toml` `[vars]`; `.dev.vars` overrides locally | Live Plus $15/month and $149/year price ids |
+| `STRIPE_PRICE_FEATURED_MONTHLY`, `STRIPE_PRICE_FEATURED_YEARLY` | `wrangler.toml` `[vars]`; `.dev.vars` overrides locally | Live Featured $39/month and $350/year price ids |
 | `STRIPE_API_BASE` | `.dev.vars` only | test-only mock API base; ignored for live keys |
 
 The names are Astro's: `PUBLIC_CLERK_PUBLISHABLE_KEY`, not the `NEXT_PUBLIC_…` name the Clerk
