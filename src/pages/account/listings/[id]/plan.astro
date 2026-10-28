@@ -71,7 +71,6 @@ const rows: { label: string; basic: string; plus: string; featured: string }[] =
   { label: 'Hours', basic: '—', plus: 'Yes', featured: 'Yes' },
   { label: 'Social, menu, and booking links', basic: '—', plus: 'Yes', featured: 'Yes' },
   { label: 'On category pages', basic: 'Compact listing', plus: 'Larger card', featured: 'Featured row and larger card' },
-  { label: 'Post events', basic: '—', plus: 'Yes', featured: 'Yes' },
   { label: 'Facebook shoutouts', basic: '—', plus: '—', featured: '2 per month' },
 ];
 const card = 'flex flex-col rounded-xl border bg-white p-5 shadow-sm';
@@ -113,7 +112,7 @@ const btn = 'mt-auto w-full rounded-md px-4 py-2 text-sm font-medium disabled:cu
           <span class="mt-1 block text-sm font-normal text-slate-500">Save ${plusSave} versus 12 monthly payments</span>
         </span>
       </p>
-      <p class="mt-2 mb-6 text-sm text-slate-600">A larger card, longer description, hours, links, four photos, and events. No promotion.</p>
+      <p class="mt-2 mb-6 text-sm text-slate-600">A larger card, longer description, hours, links, and four photos. No promotion.</p>
       <button
         class={`${btn} bg-sky-700 text-white hover:bg-sky-800`}
         data-month-ok={offered('plus', 'month') ? '1' : ''}

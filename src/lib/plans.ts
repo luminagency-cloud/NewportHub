@@ -48,7 +48,6 @@ export const isPaid = (tier: Tier) => tier === 'plus' || tier === 'featured';
 export const showsHours = isPaid;
 export const showsLinks = isPaid;
 export const showsExtraPhotos = isPaid;
-export const canPostEvents = isPaid;
 
 export function descriptionLimit(tier: Tier): number {
   return tier === 'basic' ? BASIC_DESCRIPTION_LIMIT : PAID_DESCRIPTION_LIMIT;

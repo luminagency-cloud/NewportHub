@@ -193,10 +193,10 @@ SQLite cannot change the column default without a rebuild, so a trigger rewrites
 `tier` of `free` to `basic`.
 
 - **Basic:** one cover photo, ~250-character public description, no hours, no social/menu/booking
-  links, no extra photos, no events. Compact rows at the bottom of category pages. Imports are
+  links, no extra photos. Compact rows at the bottom of category pages. Imports are
   Basic and never store `working_hours`, even when the export has it.
-- **Plus:** larger card in the main list, longer description, hours, links, 4 photos (cover + 3),
-  events. No promotion.
+- **Plus:** larger card in the main list, longer description, hours, links, 4 photos (cover + 3).
+  No promotion.
 - **Featured:** everything in Plus, plus a Featured businesses row on that business's own category
   pages (parent and subcategory, including the town filter). Every Featured listing in the category
   is in the row, order shuffled per view, horizontal scroll-snap (~3 / 2 / 1). They also appear in
@@ -206,7 +206,8 @@ SQLite cannot change the column default without a rebuild, so a trigger rewrites
 - Choose a plan at `/account/listings/<id>/plan`: after an approved claim, after a new submission,
   and from My businesses (“Change plan”). Basic does not open Stripe. A live subscription goes to
   the customer portal. Locked owner fields link here with “Available on Plus”.
-- Only Plus and Featured may post events (`canPostEvents`). Facebook shoutouts are posted by hand.
+- Events are not part of any plan yet and are not advertised. Featured includes 2 Facebook
+  shoutouts a month, which NewportHub posts for the business by hand.
 - The home page does not promote a plan. A home spotlight was removed because it would have
   promoted Plus, and a Featured-only home row is not part of these plans.
 
@@ -233,9 +234,11 @@ SQLite cannot change the column default without a rebuild, so a trigger rewrites
   `stripe_*` / `subscription_status` / `current_period_end` / `cancel_at_period_end` columns.
 - Response codes: 400 bad signature, 500 handler error (Stripe retries), 200 applied or ignored,
   503 billing not configured.
-- **Stripe dashboard setup (production):** products/prices for Featured and Premium (recurring);
-  Customer portal enabled (Settings → Billing → Customer portal), allowing cancel and switching
-  between the two plans; a webhook endpoint `https://newporthub.com/api/stripe/webhook` with the
+- **Stripe dashboard setup (production, NewportHub's own Stripe account):** four recurring prices,
+  Plus $15/month (`STRIPE_PRICE_PLUS_MONTHLY`), Plus $149/year (`STRIPE_PRICE_PLUS_YEARLY`),
+  Featured $39/month (`STRIPE_PRICE_FEATURED_MONTHLY`), and Featured $350/year
+  (`STRIPE_PRICE_FEATURED_YEARLY`); Customer portal enabled (Settings → Billing → Customer portal),
+  allowing cancel and switching between Plus and Featured and between monthly and yearly; a webhook endpoint `https://newporthub.com/api/stripe/webhook` with the
   four events above — its signing secret is `STRIPE_WEBHOOK_SECRET`. Use the same API version as the
   SDK (`stripe` v23 → `2026-09-30.endive`); the code reads invoice → subscription from
   `invoice.parent.subscription_details` and period end from subscription items.
