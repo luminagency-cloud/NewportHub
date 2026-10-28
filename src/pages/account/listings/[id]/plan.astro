@@ -1,0 +1,206 @@
+---
+// Choose a plan for one listing. Basic stays free. Plus and Featured go to Stripe Checkout.
+// A listing that already has a live subscription is sent to the customer portal instead.
+import { eq } from 'drizzle-orm';
+import Base from '../../../../layouts/Base.astro';
+import { sessionUser } from '../../../../lib/auth';
+import { billingEnabled, createCheckout, createPortal, hasLiveSubscription, tierConfig } from '../../../../lib/billing';
+import { isBillingInterval, priceConfigured, type BillingInterval, type PaidTier } from '../../../../lib/billing-tier';
+import { db } from '../../../../lib/db';
+import { getListing } from '../../../../lib/owner';
+import { PLAN_PRICES, TIER_LABELS, yearlySavings } from '../../../../lib/plans';
+import { listings } from '../../../../db/schema';
+
+const user = (await sessionUser(Astro))!;
+const listing = await getListing(Number(Astro.params.id));
+if (!listing || listing.ownerUserId !== user.id) return new Response(null, { status: 404 });
+
+const goToPortal = async () => {
+  if (!listing.stripeCustomerId) return Astro.redirect('/account?done=no-billing', 303);
+  if (!billingEnabled()) return Astro.redirect('/account?done=billing-unavailable', 303);
+  try {
+    return Astro.redirect(await createPortal(listing.stripeCustomerId, Astro.url.origin), 303);
+  } catch (err) {
+    console.error('Stripe portal failed', err);
+    return Astro.redirect('/account?done=billing-error', 303);
+  }
+};
+
+if (hasLiveSubscription(listing)) return goToPortal();
+
+let error: string | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const plan = String(form.get('plan') ?? '');
+  if (plan === 'basic') {
+    if (listing.tier !== 'basic') {
+      await db().update(listings).set({ tier: 'basic', updatedAt: new Date() }).where(eq(listings.id, listing.id));
+    }
+    return Astro.redirect('/account?done=plan-basic', 303);
+  }
+  const interval = String(form.get('interval') ?? '');
+  if ((plan !== 'plus' && plan !== 'featured') || !isBillingInterval(interval)) {
+    error = 'Choose Basic, Plus, or Featured.';
+  } else if (listing.status !== 'published') {
+    error = 'A paid plan starts once the listing is live.';
+  } else if (!billingEnabled() || !priceConfigured(tierConfig(), plan, interval)) {
+    error = 'That plan is not available right now.';
+  } else {
+    try {
+      return Astro.redirect(await createCheckout(listing, plan, interval, user, Astro.url.origin), 303);
+    } catch (err) {
+      console.error('Stripe checkout failed', err);
+      error = 'Something went wrong talking to our payment provider. Please try again.';
+    }
+  }
+}
+
+const published = listing.status === 'published';
+const billing = billingEnabled();
+const config = tierConfig();
+const from = Astro.url.searchParams.get('from');
+const logoRefused = Astro.url.searchParams.get('logo') === '1';
+const offered = (tier: PaidTier, interval: BillingInterval) => billing && published && priceConfigured(config, tier, interval);
+const plusSave = yearlySavings(PLAN_PRICES.plus.month, PLAN_PRICES.plus.year);
+const featuredSave = yearlySavings(PLAN_PRICES.featured.month, PLAN_PRICES.featured.year);
+
+const rows: { label: string; basic: string; plus: string; featured: string }[] = [
+  { label: 'Name, category, town, address, phone, website', basic: 'Yes', plus: 'Yes', featured: 'Yes' },
+  { label: 'Description', basic: 'About 250 characters', plus: 'Longer', featured: 'Longer' },
+  { label: 'Photos', basic: '1 cover photo', plus: '4 (cover + 3)', featured: '4 (cover + 3)' },
+  { label: 'Hours', basic: '—', plus: 'Yes', featured: 'Yes' },
+  { label: 'Social, menu, and booking links', basic: '—', plus: 'Yes', featured: 'Yes' },
+  { label: 'On category pages', basic: 'Compact listing', plus: 'Larger card', featured: 'Featured row and larger card' },
+  { label: 'Facebook shoutouts', basic: '—', plus: '—', featured: '2 per month' },
+];
+const card = 'flex flex-col rounded-xl border bg-white p-5 shadow-sm';
+const btn = 'mt-auto w-full rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
+---
+<Base title={`Choose a plan for ${listing.name}`} noindex>
+  <p class="mb-2 text-sm"><a href="/account" class="text-sky-700 hover:underline">← My businesses</a></p>
+  <h1 class="mb-2 text-2xl font-bold">Choose a plan</h1>
+  <p class="mb-6 text-slate-600">
+    {from === 'claim' && 'Your claim is approved. '}
+    {from === 'new' && 'Your business was submitted for review. '}
+    Pick a plan for <strong>{listing.name}</strong>. You can change it later. Downgrading hides paid details; it does not delete them.
+  </p>
+  {logoRefused && <p class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">The cover photo was not saved. You can add it from Edit.</p>}
+  {error && <p class="mb-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
+  {!published && <p class="mb-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Plus and Featured can be purchased once this listing is live. Basic is free and needs no payment.</p>}
+
+  <div class="mb-6 inline-flex rounded-lg border border-slate-300 bg-white p-1" role="group" aria-label="Billing period">
+    <button type="button" data-interval="month" aria-pressed="true" class="rounded-md bg-sky-700 px-4 py-1.5 text-sm font-medium text-white">Monthly</button>
+    <button type="button" data-interval="year" aria-pressed="false" class="rounded-md px-4 py-1.5 text-sm font-medium text-slate-700">Yearly</button>
+  </div>
+
+  <div class="grid items-stretch gap-4 md:grid-cols-3">
+    <form method="post" class={`${card} border-slate-200`}>
+      <input type="hidden" name="plan" value="basic" />
+      <h2 class="text-lg font-semibold">{TIER_LABELS.basic}</h2>
+      <p class="mt-1 text-2xl font-bold">Free</p>
+      <p class="mt-2 mb-6 text-sm text-slate-600">Keep the listing current: name, contact details, a short description, and one photo.</p>
+      <button class={`${btn} border border-slate-300 bg-white hover:border-sky-400`}>Continue with Basic</button>
+    </form>
+
+    <form method="post" class={`${card} border-sky-300 ring-1 ring-sky-200`} data-plan="plus">
+      <input type="hidden" name="plan" value="plus" />
+      <input type="hidden" name="interval" value="month" data-interval-input />
+      <h2 class="text-lg font-semibold">{TIER_LABELS.plus}</h2>
+      <p class="mt-1 text-2xl font-bold">
+        <span data-price="month">${PLAN_PRICES.plus.month}<span class="text-base font-normal text-slate-500">/month</span></span>
+        <span data-price="year" hidden>${PLAN_PRICES.plus.year}<span class="text-base font-normal text-slate-500">/year</span>
+          <span class="mt-1 block text-sm font-normal text-slate-500">Save ${plusSave} versus 12 monthly payments</span>
+        </span>
+      </p>
+      <p class="mt-2 mb-6 text-sm text-slate-600">A larger card, longer description, hours, links, and four photos. No promotion.</p>
+      <button
+        class={`${btn} bg-sky-700 text-white hover:bg-sky-800`}
+        data-month-ok={offered('plus', 'month') ? '1' : ''}
+        data-year-ok={offered('plus', 'year') ? '1' : ''}
+        disabled={!offered('plus', 'month')}
+      >Choose Plus</button>
+    </form>
+
+    <form method="post" class={`${card} border-amber-300 ring-1 ring-amber-200`} data-plan="featured">
+      <input type="hidden" name="plan" value="featured" />
+      <input type="hidden" name="interval" value="month" data-interval-input />
+      <h2 class="text-lg font-semibold">{TIER_LABELS.featured}</h2>
+      <p class="mt-1 text-2xl font-bold">
+        <span data-price="month">${PLAN_PRICES.featured.month}<span class="text-base font-normal text-slate-500">/month</span></span>
+        <span data-price="year" hidden>${PLAN_PRICES.featured.year}<span class="text-base font-normal text-slate-500">/year</span>
+          <span class="mt-1 block text-sm font-normal text-slate-500">Save ${featuredSave} versus 12 monthly payments</span>
+        </span>
+      </p>
+      <p class="mt-2 mb-6 text-sm text-slate-600">Everything in Plus, plus the Featured businesses row on your category pages.</p>
+      <button
+        class={`${btn} bg-amber-400 text-amber-950 hover:bg-amber-300`}
+        data-month-ok={offered('featured', 'month') ? '1' : ''}
+        data-year-ok={offered('featured', 'year') ? '1' : ''}
+        disabled={!offered('featured', 'month')}
+      >Choose Featured</button>
+    </form>
+  </div>
+  {published && !billing && <p class="mt-3 text-sm text-slate-500">Paid plans are not available right now.</p>}
+
+  <div class="mt-10 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full min-w-[36rem] text-left text-sm">
+      <caption class="sr-only">Plan comparison</caption>
+      <thead class="bg-slate-50 text-slate-600">
+        <tr>
+          <th class="px-4 py-3 font-medium"></th>
+          <th class="px-4 py-3 font-semibold">Basic</th>
+          <th class="px-4 py-3 font-semibold">Plus</th>
+          <th class="px-4 py-3 font-semibold">Featured</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr class="border-t border-slate-100">
+            <th class="px-4 py-2 font-normal text-slate-700">{row.label}</th>
+            <td class="px-4 py-2">{row.basic}</td>
+            <td class="px-4 py-2">{row.plus}</td>
+            <td class="px-4 py-2">{row.featured}</td>
+          </tr>
+        ))}
+        <tr class="border-t border-slate-200">
+          <th class="px-4 py-3 font-normal text-slate-700">Price</th>
+          <td class="px-4 py-3 font-medium">Free</td>
+          <td class="px-4 py-3 font-medium">${PLAN_PRICES.plus.month}/mo or ${PLAN_PRICES.plus.year}/yr</td>
+          <td class="px-4 py-3 font-medium">${PLAN_PRICES.featured.month}/mo or ${PLAN_PRICES.featured.year}/yr</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-3 text-sm text-slate-500">A year of Plus is ${PLAN_PRICES.plus.year}, ${plusSave} less than twelve monthly payments. A year of Featured is ${PLAN_PRICES.featured.year}, ${featuredSave} less. Facebook shoutouts are posted by NewportHub; they are not a button in your account. A listing already on a paid plan is changed in the billing portal.</p>
+</Base>
+
+<script>
+  const group = document.querySelector('[aria-label="Billing period"]');
+  const buttons = group ? [...group.querySelectorAll('button[data-interval]')] : [];
+  const setIntervalChoice = (interval: string) => {
+    for (const button of buttons) {
+      if (!(button instanceof HTMLButtonElement)) continue;
+      const on = button.dataset.interval === interval;
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      button.className = on
+        ? 'rounded-md bg-sky-700 px-4 py-1.5 text-sm font-medium text-white'
+        : 'rounded-md px-4 py-1.5 text-sm font-medium text-slate-700';
+    }
+    document.querySelectorAll('[data-price]').forEach((el) => {
+      if (el instanceof HTMLElement) el.hidden = el.dataset.price !== interval;
+    });
+    document.querySelectorAll('[data-interval-input]').forEach((el) => {
+      if (el instanceof HTMLInputElement) el.value = interval;
+    });
+    document.querySelectorAll('button[data-month-ok]').forEach((el) => {
+      if (!(el instanceof HTMLButtonElement)) return;
+      const ok = interval === 'year' ? el.dataset.yearOk === '1' : el.dataset.monthOk === '1';
+      el.disabled = !ok;
+    });
+  };
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      if (button instanceof HTMLButtonElement && button.dataset.interval) setIntervalChoice(button.dataset.interval);
+    });
+  }
+</script>

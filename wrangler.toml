@@ -22,3 +22,13 @@ migrations_dir = "drizzle/migrations"
 [[r2_buckets]]
 binding = "MEDIA"
 bucket_name = "newporthub-media"
+
+# Live price ids for the NewportHub Stripe account (acct_1UVVEACQlLtUg0Tw).
+# Plus $15/month, Plus $149/year, Featured $39/month, Featured $350/year.
+# Plain text Worker vars. A deploy publishes them. .dev.vars overrides them locally
+# (use test-mode price ids there, or leave them empty to hide that option).
+[vars]
+STRIPE_PRICE_PLUS_MONTHLY = "price_1UVVNNCQlLtUg0TwaKOCHQEn"
+STRIPE_PRICE_PLUS_YEARLY = "price_1UVVNPCQlLtUg0TwFckRXTmm"
+STRIPE_PRICE_FEATURED_MONTHLY = "price_1UVVNRCQlLtUg0TwSJOHSmY4"
+STRIPE_PRICE_FEATURED_YEARLY = "price_1UVVNTCQlLtUg0TwAjtTPv9K"

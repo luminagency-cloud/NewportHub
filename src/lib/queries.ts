@@ -1,13 +1,15 @@
 import { and, asc, count, eq, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
-import { categories, listings, retiredSlugs, towns, type Category } from '../db/schema';
+import { categories, listings, retiredSlugs, towns, type Category, type Tier } from '../db/schema';
 import { categoryLink } from './category-rules';
 import { db } from './db';
 
 export const PAGE_SIZE = 24;
 
-/** premium, then featured, then free. */
-const tierRank = sql<number>`CASE ${listings.tier} WHEN 'premium' THEN 0 WHEN 'featured' THEN 1 ELSE 2 END`;
+/** Featured, then Plus, then Basic. The one place paid plans sort ahead of Basic. */
+const tierRank = sql<number>`CASE ${listings.tier} WHEN 'featured' THEN 0 WHEN 'plus' THEN 1 ELSE 2 END`;
+/** Category pages: Plus and Featured together, then Basic at the bottom. */
+const categoryPageRank = sql<number>`CASE WHEN ${listings.tier} = 'basic' THEN 1 ELSE 0 END`;
 
 /** A listing's category's parent (null for listings filed directly under a parent). */
 const parentCat = alias(categories, 'parent_cat');
@@ -17,6 +19,7 @@ const cardFields = {
   name: listings.name,
   address: listings.address,
   phone: listings.phone,
+  website: listings.website,
   description: listings.description,
   logoR2Key: listings.logoR2Key,
   tier: listings.tier,
@@ -36,9 +39,10 @@ export type ListingCard = {
   name: string;
   address: string | null;
   phone: string | null;
+  website: string | null;
   description: string | null;
   logoR2Key: string | null;
-  tier: 'free' | 'featured' | 'premium';
+  tier: Tier;
   /** The listing's own category (a subcategory, or a parent for "general" listings). */
   categoryName: string;
   categorySlug: string;
@@ -113,6 +117,47 @@ export async function searchListings({ q, category, townId, page = 1 }: SearchPa
       .where(where),
   ]);
   return { rows: rows as ListingCard[], total: totals[0]?.n ?? 0 };
+}
+
+/**
+ * One category page (and category + town). Featured businesses are returned in full for the
+ * row at the top; the paged rows are Plus and Featured first, then Basic, by name.
+ * Featured businesses are in both places.
+ */
+export async function categoryPageListings(category: CategoryFilter, townId: number | undefined, page = 1) {
+  const filters: (SQL | undefined)[] = [eq(listings.status, 'published'), categoryCondition(category)];
+  if (townId) filters.push(eq(listings.townId, townId));
+  const where = and(...filters);
+  const offset = (Math.max(1, page) - 1) * PAGE_SIZE;
+  const featuredWhere = and(where, eq(listings.tier, 'featured'));
+
+  const [featured, rows, totals] = await Promise.all([
+    db()
+      .select(cardFields)
+      .from(listings)
+      .innerJoin(categories, eq(listings.categoryId, categories.id))
+      .leftJoin(parentCat, eq(categories.parentId, parentCat.id))
+      .innerJoin(towns, eq(listings.townId, towns.id))
+      .where(featuredWhere)
+      .orderBy(asc(listings.name)),
+    db()
+      .select(cardFields)
+      .from(listings)
+      .innerJoin(categories, eq(listings.categoryId, categories.id))
+      .leftJoin(parentCat, eq(categories.parentId, parentCat.id))
+      .innerJoin(towns, eq(listings.townId, towns.id))
+      .where(where)
+      .orderBy(categoryPageRank, asc(listings.name))
+      .limit(PAGE_SIZE)
+      .offset(offset),
+    db()
+      .select({ n: count() })
+      .from(listings)
+      .innerJoin(categories, eq(listings.categoryId, categories.id))
+      .leftJoin(parentCat, eq(categories.parentId, parentCat.id))
+      .where(where),
+  ]);
+  return { featured: featured as ListingCard[], rows: rows as ListingCard[], total: totals[0]?.n ?? 0 };
 }
 
 export interface TreeNode {

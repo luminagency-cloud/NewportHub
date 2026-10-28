@@ -1,10 +1,22 @@
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
-import { categories, claims, listingChanges, listings, pendingEdits, retiredSlugs, towns, type ListingChanges } from '../db/schema';
+import { categories, claims, listingChanges, listings, pendingEdits, retiredSlugs, towns, type Listing, type ListingChanges } from '../db/schema';
 import { refreshBreakouts } from './categories';
 import { db } from './db';
 import { fieldChanges } from './listing-form';
 import { deleteMedia } from './media';
+import { photoKeySet, unusedPhotoKeys } from './photos';
 import { RESERVED_SLUGS, slugify } from './slug';
+
+const photoSet = (l: Pick<Listing, 'logoR2Key' | 'photos'>) => photoKeySet(l.logoR2Key, l.photos);
+
+/** Keys an edit introduced that are not on the live listing, so a rejection can delete them. */
+function pendingOnlyKeys(listing: Listing, changes: ListingChanges): string[] {
+  const live = photoSet(listing);
+  const pending = new Set<string>();
+  if ('logoR2Key' in changes && changes.logoR2Key) pending.add(changes.logoR2Key);
+  if ('photos' in changes) for (const key of changes.photos ?? []) if (key) pending.add(key);
+  return [...pending].filter((key) => !live.has(key));
+}
 
 /** The three moderation queues, oldest first. */
 export async function moderationQueues() {
@@ -178,7 +190,9 @@ export async function approveEdit(editId: number, adminId: string): Promise<Resu
       changes: fieldChanges(row.listing, changes),
     }),
   ]);
-  if (changes.logoR2Key && changes.logoR2Key !== row.listing.logoR2Key) await deleteMedia(row.listing.logoR2Key);
+  const mergedCover = 'logoR2Key' in changes ? (changes.logoR2Key ?? null) : row.listing.logoR2Key;
+  const mergedExtras = 'photos' in changes ? (changes.photos ?? []) : (row.listing.photos ?? []);
+  for (const key of unusedPhotoKeys(photoSet(row.listing), photoKeySet(mergedCover, mergedExtras))) await deleteMedia(key);
   if (changes.categoryId) await refreshBreakouts();
   return { ok: `Applied edit to “${row.listing.name}”.` };
 }
@@ -196,7 +210,6 @@ export async function rejectEdit(editId: number, adminId: string, note: string |
     .update(pendingEdits)
     .set({ status: 'rejected', reviewNote: note, reviewedBy: adminId, reviewedAt: new Date() })
     .where(eq(pendingEdits.id, editId));
-  const logo = row.edit.changes.logoR2Key;
-  if (logo && logo !== row.listing.logoR2Key) await deleteMedia(logo);
+  for (const key of pendingOnlyKeys(row.listing, row.edit.changes)) await deleteMedia(key);
   return { ok: `Rejected edit to “${row.listing.name}”.` };
 }

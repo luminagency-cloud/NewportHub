@@ -30,12 +30,13 @@ test('diffChanges keeps only changed fields', () => {
 
 test('admin fields: status, plan, slug, owner', () => {
   const f = (o: Record<string, string>) => { const d = new FormData(); for (const [k, v] of Object.entries(o)) d.set(k, v); return d; };
-  const ok = parseAdminFields(f({ status: 'hidden', tier: 'featured', slug: ' Joe’s Pizza ', owner: 'a@b.co' }));
+  const ok = parseAdminFields(f({ status: 'hidden', tier: 'plus', slug: ' Joe’s Pizza ', owner: 'a@b.co' }));
   assert.deepEqual(ok.errors, []);
+  assert.equal(ok.values.tier, 'plus');
   assert.equal(ok.values.slug, 'joe-s-pizza');
-  assert.equal(parseAdminFields(f({ status: 'gone', tier: 'free' })).errors.length, 1);
-  assert.equal(parseAdminFields(f({ status: 'published', tier: 'free', owner: 'bob' })).errors.length, 1);
-  assert.deepEqual(parseAdminFields(f({ status: 'published', tier: 'free', owner: 'user_2abc' })).errors, []);
+  assert.equal(parseAdminFields(f({ status: 'gone', tier: 'basic' })).errors.length, 1);
+  assert.equal(parseAdminFields(f({ status: 'published', tier: 'free', owner: 'bob' })).errors.length, 2);
+  assert.deepEqual(parseAdminFields(f({ status: 'published', tier: 'basic', owner: 'user_2abc' })).errors, []);
 });
 
 test('fieldChanges lists before and after', () => {
