@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
-import { categories, claims, listingChanges, listings, pendingEdits, towns, type ListingChanges } from '../db/schema';
+import { categories, claims, listingChanges, listings, pendingEdits, retiredSlugs, towns, type ListingChanges } from '../db/schema';
 import { refreshBreakouts } from './categories';
 import { db } from './db';
 import { fieldChanges } from './listing-form';
@@ -51,10 +51,16 @@ async function ensureCategory(name: string, parentId: number | null): Promise<{ 
   if (!slug || RESERVED_SLUGS.has(slug)) return { error: `"${name}" cannot be used as a category name.` };
   const found = await db().select({ id: categories.id }).from(categories).where(eq(categories.slug, slug));
   if (found[0]) return found[0];
+  // A name the admin renamed or merged away maps to where it went.
+  const retired = (await db().select({ id: retiredSlugs.categoryId }).from(retiredSlugs).where(eq(retiredSlugs.slug, slug)))[0];
+  if (retired?.id) return { id: retired.id };
   const parent = parentId ? (await db().select({ id: categories.id, parentId: categories.parentId }).from(categories).where(eq(categories.id, parentId)))[0] : undefined;
   if (!parent || parent.parentId !== null) return { error: 'Choose the parent category for the new subcategory.' };
   try {
-    const [row] = await db().insert(categories).values({ slug, name, parentId: parent.id }).returning({ id: categories.id });
+    const [, [row]] = await db().batch([
+      db().delete(retiredSlugs).where(eq(retiredSlugs.slug, slug)),
+      db().insert(categories).values({ slug, name, parentId: parent.id }).returning({ id: categories.id }),
+    ]);
     return row!;
   } catch {
     return { error: `Category "${name}" clashes with a town of the same name. Pick another name.` };
@@ -66,9 +72,14 @@ async function ensureTown(name: string, state: string): Promise<{ id: number } |
   if (!slug || RESERVED_SLUGS.has(slug)) return { error: `"${name}" cannot be used as a town name.` };
   const found = await db().select({ id: towns.id }).from(towns).where(eq(towns.slug, slug));
   if (found[0]) return found[0];
+  const retired = (await db().select({ id: retiredSlugs.townId }).from(retiredSlugs).where(eq(retiredSlugs.slug, slug)))[0];
+  if (retired?.id) return { id: retired.id };
   if (!/^[A-Z]{2}$/.test(state)) return { error: 'Town state must be a two-letter code, e.g. RI.' };
   try {
-    const [row] = await db().insert(towns).values({ slug, name, state }).returning({ id: towns.id });
+    const [, [row]] = await db().batch([
+      db().delete(retiredSlugs).where(eq(retiredSlugs.slug, slug)),
+      db().insert(towns).values({ slug, name, state }).returning({ id: towns.id }),
+    ]);
     return row!;
   } catch {
     return { error: `Town "${name}" clashes with a category of the same name. Pick another name.` };

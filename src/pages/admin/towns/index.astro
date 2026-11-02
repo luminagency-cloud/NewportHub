@@ -1,0 +1,41 @@
+---
+// Towns with listing counts. Click one to rename, merge, or delete it.
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import { isAdmin } from '../../../lib/auth';
+import { townsWithCounts } from '../../../lib/admin-taxonomy';
+import { SERVICE_TOWNS } from '../../../data/taxonomy';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const rows = await townsWithCounts();
+const msg = Astro.url.searchParams.get('msg');
+---
+<Base title="Towns" noindex>
+  <AdminNav current="towns" />
+  <div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+    <h1 class="text-2xl font-bold">Towns</h1>
+    <a href="/admin/towns/new" class="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800">Add a town</a>
+  </div>
+  <p class="mb-6 text-sm text-slate-600">
+    The import only brings in businesses from {SERVICE_TOWNS.join(', ')} (set in <code>src/data/taxonomy.ts</code>). Towns added
+    here are for businesses added by owners or by hand.
+  </p>
+  {msg && <p class="mb-4 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+  <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-slate-50 text-xs text-slate-500"><tr><th class="px-3 py-2">Town</th><th class="px-3 py-2">Address</th><th class="px-3 py-2 text-right">Live</th><th class="px-3 py-2 text-right">All</th></tr></thead>
+      <tbody>
+        {rows.map((t) => (
+          <tr class="border-t border-slate-100">
+            <td class="px-3 py-2"><a href={`/admin/towns/${t.id}`} class="font-medium text-sky-700 hover:underline">{t.name}</a>, {t.state}</td>
+            <td class="px-3 py-2"><a href={`/${t.slug}/`} class="text-slate-600 hover:underline">/{t.slug}/</a></td>
+            <td class="px-3 py-2 text-right tabular-nums">{t.published}</td>
+            <td class="px-3 py-2 text-right tabular-nums text-slate-500">{t.total}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</Base>

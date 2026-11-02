@@ -30,6 +30,8 @@ export const categories = sqliteTable(
     description: text('description'),
     parentId: integer('parent_id').references((): AnySQLiteColumn => categories.id),
     brokenOut: integer('broken_out', { mode: 'boolean' }).notNull().default(false),
+    /** Icon key from src/lib/category-icons.ts; null shows the parent's icon (or the default). */
+    icon: text('icon'),
   },
   (t) => [index('categories_parent_idx').on(t.parentId)],
 );
@@ -186,6 +188,18 @@ export const pendingEdits = sqliteTable(
 export const slugRedirects = sqliteTable('slug_redirects', {
   oldSlug: text('old_slug').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  createdAt: timestamps.createdAt,
+});
+
+/**
+ * Category and town slugs no longer in use (renamed, merged, or deleted in admin). A row with a
+ * target 301-redirects there; one without (a deleted parent or town) is a 404. The seed and import
+ * scripts never re-create a retired slug, so admin changes survive a re-run.
+ */
+export const retiredSlugs = sqliteTable('retired_slugs', {
+  slug: text('slug').primaryKey(),
+  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  townId: integer('town_id').references(() => towns.id, { onDelete: 'set null' }),
   createdAt: timestamps.createdAt,
 });
 

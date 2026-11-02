@@ -1,0 +1,14 @@
+---
+// A category's icon as inline SVG (decorative; the category name is always next to it).
+// Size it with the class, e.g. "h-5 w-5"; colour follows the text colour.
+import { iconFor, iconSvg } from '../lib/category-icons';
+
+interface Props {
+  icon: string | null | undefined;
+  /** The parent's icon, used when this category has none. */
+  parentIcon?: string | null;
+  class?: string;
+}
+const { icon, parentIcon, class: className = 'h-5 w-5' } = Astro.props;
+---
+<span aria-hidden="true" class={`inline-block shrink-0 [&>svg]:h-full [&>svg]:w-full ${className}`} set:html={iconSvg(iconFor(icon, parentIcon))} />

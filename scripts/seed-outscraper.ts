@@ -118,6 +118,11 @@ const existingListings = d1Query<{ slug: string; source_place_id: string | null 
 const slugByPlace = new Map(existingListings.filter((r) => r.source_place_id).map((r) => [r.source_place_id!, r.slug]));
 const takenSlugs = new Set(existingListings.map((r) => r.slug));
 const serviceTown = new Map(SERVICE_TOWNS.map((t) => [t.toLowerCase(), t]));
+// Service towns renamed, merged, or deleted in admin (retired slugs): rows go to where the town went,
+// or are skipped if it was deleted, and the old town is not re-created.
+const retiredTowns = new Map(
+  d1Query<{ slug: string; town_id: number | null }>('SELECT slug, town_id FROM retired_slugs WHERE category_id IS NULL').map((r) => [r.slug, r.town_id]),
+);
 
 const statements: string[] = [];
 const skipped = new Map<string, string[]>(); // reason -> example labels
@@ -138,6 +143,9 @@ for (const [i, row] of rows.entries()) {
   if (!name || !city || !state) { skip('missing name, city, or state', label); continue; }
   const town = state === SERVICE_STATE ? serviceTown.get(city.toLowerCase()) : undefined;
   if (!town) { skip(`outside the service towns (${city}, ${state})`, label); continue; }
+  const townSlug = slugify(town);
+  const movedTo = retiredTowns.get(townSlug);
+  if (retiredTowns.has(townSlug) && !movedTo) { skip(`town deleted in admin (${town})`, label); continue; }
 
   const mapped = mapSourceCategory([val(row, 'category', 'type'), ...(val(row, 'subtypes')?.split(',') ?? [])], aliases);
   if (!('categoryId' in mapped)) {
@@ -166,7 +174,7 @@ for (const [i, row] of rows.entries()) {
     slug: q(slug),
     name: q(name),
     category_id: String(categoryId),
-    town_id: `(SELECT id FROM towns WHERE slug = ${q(slugify(town))})`,
+    town_id: movedTo ? String(movedTo) : `(SELECT id FROM towns WHERE slug = ${q(townSlug)})`,
     address: q(val(row, 'full_address', 'address')),
     phone: q(val(row, 'phone', 'phone_1')),
     website: q(website(val(row, 'site', 'website'))),
@@ -191,7 +199,9 @@ for (const [i, row] of rows.entries()) {
 }
 
 const sql = [
-  ...SERVICE_TOWNS.map((t) => `INSERT INTO towns (slug, name, state) VALUES (${q(slugify(t))}, ${q(t)}, ${q(SERVICE_STATE)}) ON CONFLICT(slug) DO NOTHING;`),
+  ...SERVICE_TOWNS.filter((t) => !retiredTowns.has(slugify(t))).map((t) =>
+    `INSERT INTO towns (slug, name, state) SELECT ${q(slugify(t))}, ${q(t)}, ${q(SERVICE_STATE)} ` +
+    `WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = ${q(slugify(t))}) ON CONFLICT(slug) DO NOTHING;`),
   ...statements,
   ...[...unmapped].map(([cat, u]) =>
     `INSERT INTO import_unmapped (source_category, rows, example, last_seen) VALUES (${q(cat)}, ${u.rows}, ${q(u.example)}, unixepoch()) ` +

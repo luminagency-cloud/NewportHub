@@ -1,6 +1,6 @@
 import { and, asc, count, eq, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
-import { categories, listings, towns, type Category } from '../db/schema';
+import { categories, listings, retiredSlugs, towns, type Category } from '../db/schema';
 import { categoryLink } from './category-rules';
 import { db } from './db';
 
@@ -23,7 +23,9 @@ const cardFields = {
   categoryName: categories.name,
   categorySlug: categories.slug,
   categoryBrokenOut: categories.brokenOut,
+  categoryIcon: categories.icon,
   parentName: parentCat.name,
+  parentIcon: parentCat.icon,
   parentSlug: parentCat.slug,
   townName: towns.name,
   townSlug: towns.slug,
@@ -41,7 +43,9 @@ export type ListingCard = {
   categoryName: string;
   categorySlug: string;
   categoryBrokenOut: boolean;
+  categoryIcon: string | null;
   parentName: string | null;
+  parentIcon: string | null;
   parentSlug: string | null;
   townName: string;
   townSlug: string;
@@ -117,6 +121,8 @@ export interface TreeNode {
   name: string;
   /** Published listings filed directly in this category. */
   own: number;
+  /** Icon key; a subcategory without one shows its parent's (see iconFor). */
+  icon: string | null;
 }
 export interface TreeParent extends TreeNode {
   /** Published listings in the parent and all its subcategories. */
@@ -127,17 +133,17 @@ export interface TreeParent extends TreeNode {
 /** All categories as parent → subcategories, with published counts. Parents sorted by name. */
 export async function categoryTree(): Promise<TreeParent[]> {
   const rows = await db()
-    .select({ id: categories.id, slug: categories.slug, name: categories.name, parentId: categories.parentId, brokenOut: categories.brokenOut, own: count(listings.id) })
+    .select({ id: categories.id, slug: categories.slug, name: categories.name, parentId: categories.parentId, brokenOut: categories.brokenOut, icon: categories.icon, own: count(listings.id) })
     .from(categories)
     .leftJoin(listings, and(eq(listings.categoryId, categories.id), eq(listings.status, 'published')))
     .groupBy(categories.id)
     .orderBy(asc(categories.name));
   const parents = new Map<number, TreeParent>();
-  for (const r of rows) if (r.parentId === null) parents.set(r.id, { id: r.id, slug: r.slug, name: r.name, own: r.own, total: r.own, subs: [] });
+  for (const r of rows) if (r.parentId === null) parents.set(r.id, { id: r.id, slug: r.slug, name: r.name, icon: r.icon, own: r.own, total: r.own, subs: [] });
   for (const r of rows) {
     const p = r.parentId === null ? undefined : parents.get(r.parentId);
     if (!p) continue;
-    p.subs.push({ id: r.id, slug: r.slug, name: r.name, own: r.own, brokenOut: r.brokenOut });
+    p.subs.push({ id: r.id, slug: r.slug, name: r.name, icon: r.icon, own: r.own, brokenOut: r.brokenOut });
     p.total += r.own;
   }
   return [...parents.values()];
@@ -166,6 +172,22 @@ export async function getCategory(slug: string) {
       .from(categories)
       .leftJoin(parentCat, eq(categories.parentId, parentCat.id))
       .where(eq(categories.slug, slug))
+      .limit(1)
+  )[0];
+}
+
+/**
+ * Where an old category or town slug (renamed, merged, or deleted in admin) points now: the
+ * current slug of its target category or town. Both null: retired with nowhere to go (404).
+ */
+export async function retiredTarget(slug: string) {
+  return (
+    await db()
+      .select({ category: categories.slug, town: towns.slug })
+      .from(retiredSlugs)
+      .leftJoin(categories, eq(retiredSlugs.categoryId, categories.id))
+      .leftJoin(towns, eq(retiredSlugs.townId, towns.id))
+      .where(eq(retiredSlugs.slug, slug))
       .limit(1)
   )[0];
 }

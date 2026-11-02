@@ -1,6 +1,6 @@
 ---
 interface Props {
-  current: 'moderation' | 'listings' | 'traffic' | 'ads' | 'categories';
+  current: 'moderation' | 'listings' | 'traffic' | 'ads' | 'categories' | 'towns';
 }
 const { current } = Astro.props;
 const link = (on: boolean) => `rounded-md px-3 py-1.5 text-sm font-medium ${on ? 'bg-sky-800 text-white' : 'text-sky-800 hover:bg-sky-50'}`;
@@ -11,4 +11,5 @@ const link = (on: boolean) => `rounded-md px-3 py-1.5 text-sm font-medium ${on ?
   <a href="/admin/traffic" class={link(current === 'traffic')} aria-current={current === 'traffic' ? 'page' : undefined}>Traffic</a>
   <a href="/admin/ads" class={link(current === 'ads')} aria-current={current === 'ads' ? 'page' : undefined}>Banner ads</a>
   <a href="/admin/categories" class={link(current === 'categories')} aria-current={current === 'categories' ? 'page' : undefined}>Categories</a>
+  <a href="/admin/towns" class={link(current === 'towns')} aria-current={current === 'towns' ? 'page' : undefined}>Towns</a>
 </nav>

@@ -1,4 +1,5 @@
 ---
+import CategoryIcon from './CategoryIcon.astro';
 import { cardCategory, type ListingCard } from '../lib/queries';
 
 interface Props {
@@ -13,8 +14,12 @@ const frame = {
 }[l.tier];
 ---
 <article class={`relative flex gap-4 rounded-lg border p-4 ${frame}`}>
-  {l.logoR2Key && (
+  {l.logoR2Key ? (
     <img src={`/media/${l.logoR2Key}`} alt="" width="64" height="64" loading="lazy" class="h-16 w-16 shrink-0 rounded object-contain" />
+  ) : (
+    <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-sky-50 text-sky-700/70">
+      <CategoryIcon icon={l.categoryIcon} parentIcon={l.parentIcon} class="h-8 w-8" />
+    </span>
   )}
   <div class="min-w-0">
     {l.tier !== 'free' && (
