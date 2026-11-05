@@ -54,13 +54,15 @@ const hoursText = (h: Hours | null | undefined) =>
   h ? WEEKDAYS.filter((d) => d in h).map((d) => `${d.slice(0, 3)} ${formatDay(h[d])}`).join(' · ') : '';
 const FIELD_LABELS: Record<keyof ListingChanges, string> = {
   name: 'Name', categoryId: 'Category', townId: 'Town', address: 'Address', phone: 'Phone', website: 'Website',
-  email: 'Email', description: 'Description', hours: 'Hours', logoR2Key: 'Logo',
+  email: 'Email', description: 'Description', hours: 'Hours', socialUrl: 'Social link', menuUrl: 'Menu link',
+  bookingUrl: 'Booking link', logoR2Key: 'Cover photo', photos: 'More photos',
 };
 function show(field: keyof ListingChanges, value: unknown): string {
   if (value == null || value === '') return '—';
   if (field === 'categoryId') return catName.get(value as number) ?? `#${value}`;
   if (field === 'townId') return townName.get(value as number) ?? `#${value}`;
   if (field === 'hours') return hoursText(value as Hours);
+  if (field === 'photos') return Array.isArray(value) && value.length ? `${value.length} photo${value.length === 1 ? '' : 's'}` : '—';
   return String(value);
 }
 

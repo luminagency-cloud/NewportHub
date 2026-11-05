@@ -1,0 +1,18 @@
+# Copy to .dev.vars. Wrangler reads .dev.vars for `npm run dev` and `npm run preview`.
+# See .env.example for what each variable is. These override the live price ids in wrangler.toml.
+# Use test-mode price ids locally, or leave one empty to hide that option.
+
+PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+ADMIN_USER_IDS=
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+# Plus, $15/month
+STRIPE_PRICE_PLUS_MONTHLY=
+# Plus, $149/year
+STRIPE_PRICE_PLUS_YEARLY=
+# Featured, $39/month
+STRIPE_PRICE_FEATURED_MONTHLY=
+# Featured, $350/year
+STRIPE_PRICE_FEATURED_YEARLY=

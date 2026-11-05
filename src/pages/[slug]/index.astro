@@ -3,9 +3,11 @@
 // town slugs disjoint. A subcategory without its own page yet redirects to its parent.
 import Base from '../../layouts/Base.astro';
 import ListingGrid from '../../components/ListingGrid.astro';
+import CategoryListings from '../../components/CategoryListings.astro';
+import FeaturedRow from '../../components/FeaturedRow.astro';
 import BannerAd from '../../components/BannerAd.astro';
 import CategoryIcon from '../../components/CategoryIcon.astro';
-import { allTowns, categoryTree, filterFor, getCategory, getTown, parentIdsInTown, retiredTarget, searchListings } from '../../lib/queries';
+import { allTowns, categoryPageListings, categoryTree, filterFor, getCategory, getTown, parentIdsInTown, retiredTarget, searchListings } from '../../lib/queries';
 import { pageParam } from '../../lib/params';
 
 const slug = Astro.params.slug!;
@@ -27,7 +29,9 @@ if (category && parent && !category.brokenOut) {
   return Astro.redirect(`/${parent.slug}/${qs}`, 301);
 }
 
-const { rows, total } = await searchListings({ category: category && filterFor(category), townId: town?.id, page });
+const categoryResults = category ? await categoryPageListings(filterFor(category), undefined, page) : null;
+const townResults = category ? null : await searchListings({ townId: town?.id, page });
+const total = categoryResults?.total ?? townResults?.total ?? 0;
 
 // Cross-links. Parent page: its broken-out subcategories, then towns. Sub page: towns.
 // Town page: the parents that have listings in this town.
@@ -66,12 +70,15 @@ const chip = 'inline-block rounded-full border border-slate-300 bg-white px-3 py
       ? townLinks.map((t) => <li><a href={`/${slug}/${t.slug}/`} class={chip}>{t.name}</a></li>)
       : categoryLinks.map((p) => <li><a href={`/${p.slug}/${slug}/`} class={`${chip} inline-flex items-center gap-1.5`}><CategoryIcon icon={p.icon} class="h-4 w-4 text-sky-700" />{p.name}</a></li>)}
   </ul>
-  {category ? (
-    <div class="grid items-start gap-8 lg:grid-cols-[1fr_300px]">
-      <ListingGrid rows={rows} total={total} page={page} columns={2} />
-      <BannerAd placement="category_sidebar" class="lg:sticky lg:top-6 lg:self-start" />
-    </div>
-  ) : (
-    <ListingGrid rows={rows} total={total} page={page} />
+  {category && categoryResults ? (
+    <>
+      <FeaturedRow listings={categoryResults.featured} />
+      <div class="grid items-start gap-8 lg:grid-cols-[1fr_300px]">
+        <CategoryListings rows={categoryResults.rows} total={categoryResults.total} page={page} />
+        <BannerAd placement="category_sidebar" class="lg:sticky lg:top-6 lg:self-start" />
+      </div>
+    </>
+  ) : townResults && (
+    <ListingGrid rows={townResults.rows} total={townResults.total} page={page} />
   )}
 </Base>

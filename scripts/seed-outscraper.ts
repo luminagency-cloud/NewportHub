@@ -3,7 +3,7 @@
  *
  *   npm run import:remote -- path/to/export.xlsx      (or import:local)
  *
- * Every imported listing is status=published, tier=free (Basic), unclaimed. Re-running is safe: rows
+ * Every imported listing is status=published, tier=basic (Basic), unclaimed. Re-running is safe: rows
  * are matched on Outscraper's place_id; unclaimed listings get fresh source fields, and claimed or
  * admin-edited listings are left alone so those edits survive. Tier, status, owner, and Stripe fields are never
  * touched.
@@ -11,8 +11,8 @@
  * Categories come from the alias table (seed it first: npm run seed:categories:local); a subcategory
  * hit files the listing on its parent. Rows whose
  * category has no alias are not imported; their source categories are saved to import_unmapped for
- * review. Only the service towns in src/data/taxonomy.ts are imported. Hours are not imported
- * (Basic listings have no hours; Linear LA-190).
+ * review. Only the service towns in src/data/taxonomy.ts are imported. Hours are not imported:
+ * `working_hours` is ignored even when the export has it, because imports are Basic (LA-190).
  *
  * The script writes data/seed.sql and runs it with `wrangler d1 execute`.
  */
@@ -21,6 +21,7 @@ import { parse } from 'csv-parse/sync';
 import { readSheet } from 'read-excel-file/node';
 import { SERVICE_STATE, SERVICE_TOWNS } from '../src/data/taxonomy';
 import { mapSourceCategory, REFRESH_BREAKOUTS_SQL } from '../src/lib/category-rules';
+import { hoursImportedForBasic } from '../src/lib/plans';
 import { slugify } from '../src/lib/slug';
 import { wrangler } from './wrangler';
 
@@ -168,6 +169,9 @@ for (const [i, row] of rows.entries()) {
     if (placeId) slugByPlace.set(placeId, slug);
   }
 
+  // Basic imports never store hours. Passing the column through hoursImportedForBasic keeps that rule in one place.
+  hoursImportedForBasic(val(row, 'working_hours', 'hours'));
+
   const lat = Number(val(row, 'latitude'));
   const lng = Number(val(row, 'longitude'));
   const fields = {
@@ -195,7 +199,7 @@ for (const [i, row] of rows.entries()) {
   const conflict = placeId
     ? `ON CONFLICT(source_place_id) DO UPDATE SET ${refresh} WHERE listings.owner_user_id IS NULL AND NOT EXISTS (SELECT 1 FROM listing_changes c WHERE c.listing_id = listings.id)`
     : 'ON CONFLICT(slug) DO NOTHING';
-  statements.push(`INSERT INTO listings (${cols.join(', ')}, status, tier) VALUES (${Object.values(fields).join(', ')}, 'published', 'free') ${conflict};`);
+  statements.push(`INSERT INTO listings (${cols.join(', ')}, status, tier) VALUES (${Object.values(fields).join(', ')}, 'published', 'basic') ${conflict};`);
 }
 
 const sql = [

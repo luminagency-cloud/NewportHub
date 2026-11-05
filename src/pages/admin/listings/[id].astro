@@ -8,6 +8,7 @@ import { adminListingDetail, deleteAdminListing, saveAdminListing } from '../../
 import { parseAdminFields, parseListingForm, type AdminFields, type ListingFormValues } from '../../../lib/listing-form';
 import { allTowns, categoryTree } from '../../../lib/queries';
 import { STATUSES, TIERS } from '../../../db/schema';
+import { TIER_LABELS } from '../../../lib/plans';
 import { listingTraffic } from '../../../lib/traffic';
 import { dayRange } from '../../../lib/traffic-rules';
 import { adDay } from '../../../lib/ad-form';
@@ -27,7 +28,7 @@ const townIds = new Set(towns.map((t) => t.id));
 let values: Partial<ListingFormValues> = listing ?? {};
 let admin: AdminFields = {
   status: listing?.status ?? 'published',
-  tier: listing?.tier ?? 'free',
+  tier: listing?.tier ?? 'basic',
   slug: listing?.slug ?? '',
   owner: (await userEmail(Astro, listing?.ownerUserId ?? null)) ?? listing?.ownerUserId ?? '',
 };
@@ -54,7 +55,7 @@ if (Astro.request.method === 'POST') {
       const owner = await resolveOwner(Astro, extra.values.owner);
       if ('error' in owner) errors = [owner.error];
       else {
-        const r = await saveAdminListing(listing?.id ?? null, parsed.values, { ...extra.values, ownerUserId: owner.id }, form.get('logo'), form.get('removeLogo') === 'yes', actor);
+        const r = await saveAdminListing(listing?.id ?? null, parsed.values, { ...extra.values, ownerUserId: owner.id }, form, actor);
         if ('error' in r) errors = [r.error];
         else {
           const msg = r.logoError ? `Saved, but the logo was not: ${r.logoError}` : isNew ? 'Business added.' : r.changed ? 'Saved.' : 'Nothing changed.';
@@ -88,7 +89,7 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
   {detail?.hasOpenEdit && <p class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">The owner has an edit waiting in <a href="/admin" class="underline">Moderation</a>. Approving it later applies the owner’s values over yours.</p>}
   {detail && detail.openClaims > 0 && <p class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{detail.openClaims} open claim(s) in <a href="/admin" class="underline">Moderation</a>.</p>}
 
-  <ListingForm categories={tree} towns={towns} values={values} logoKey={listing?.logoR2Key} errors={errors} submitLabel={isNew ? 'Add business' : 'Save changes'}>
+  <ListingForm categories={tree} towns={towns} values={values} logoKey={listing?.logoR2Key} photos={listing?.photos ?? []} errors={errors} submitLabel={isNew ? 'Add business' : 'Save changes'}>
     <fieldset slot="top" class="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
       <legend class="px-1 text-sm font-semibold text-slate-700">Admin</legend>
       <label class={label}>Status
@@ -98,7 +99,7 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
       </label>
       <label class={label}>Plan
         <select name="tier" class={field}>
-          {TIERS.map((t) => <option value={t} selected={t === admin.tier}>{t}</option>)}
+          {TIERS.map((t) => <option value={t} selected={t === admin.tier}>{TIER_LABELS[t]}</option>)}
         </select>
         {liveSub && <span class="mt-1 block text-xs font-normal text-amber-800">Has a Stripe subscription ({listing!.subscriptionStatus}). The next Stripe event resets the plan to match it.</span>}
       </label>
@@ -111,9 +112,6 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
         <span class="mt-1 block text-xs font-normal text-slate-500">The owner must have a NewportHub account.</span>
       </label>
     </fieldset>
-    {listing?.logoR2Key && (
-      <label slot="logo" class="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" name="removeLogo" value="yes" /> Remove logo</label>
-    )}
   </ListingForm>
 
   {detail && (

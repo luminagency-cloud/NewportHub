@@ -16,15 +16,13 @@ if (Astro.request.method === 'POST') {
   values = parsed.values;
   errors = parsed.errors;
   if (!errors.length) {
-    const { logoError } = await submitListing(user, parsed.values, form.get('logo'));
-    // The listing is saved even if the logo was refused; send them to edit it to retry the logo.
-    if (!logoError) return Astro.redirect('/account?done=submitted', 303);
-    errors = [`Listing saved, but the logo was not: ${logoError} Upload it again from My listings.`];
+    const { id, logoError } = await submitListing(user, parsed.values, form.get('logo'));
+    return Astro.redirect(`/account/listings/${id}/plan?from=new${logoError ? '&logo=1' : ''}`, 303);
   }
 }
 ---
 <Base title="Add a new business" noindex>
   <h1 class="mb-2 text-2xl font-bold">Add a new business</h1>
   <p class="mb-6 text-slate-600">New listings are reviewed before they appear on NewportHub.</p>
-  <ListingForm categories={opts.categories} towns={opts.towns} values={values} allowSuggestions errors={errors} submitLabel="Submit for review" />
+  <ListingForm categories={opts.categories} towns={opts.towns} values={values} allowSuggestions locked errors={errors} submitLabel="Submit for review" />
 </Base>

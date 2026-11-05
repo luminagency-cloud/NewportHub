@@ -6,7 +6,12 @@ export type Hours = Partial<Record<Weekday, { open: string; close: string }[]>>;
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
 
-export const TIERS = ['free', 'featured', 'premium'] as const;
+/**
+ * Plan keys. Renamed from free / featured / premium (see drizzle/migrations/0011_plan_tiers.sql):
+ * free → basic, featured (the old middle plan) → plus, premium → featured (the new top plan).
+ */
+export const TIERS = ['basic', 'plus', 'featured'] as const;
+export type Tier = (typeof TIERS)[number];
 /** hidden: taken off the site by the admin (the normal alternative to deleting). */
 export const STATUSES = ['pending', 'published', 'rejected', 'hidden'] as const;
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
@@ -75,10 +80,17 @@ export const listings = sqliteTable(
     email: text('email'),
     description: text('description'),
     hours: text('hours', { mode: 'json' }).$type<Hours>(),
+    /** Paid plans only on the public site. Kept when a listing drops to Basic. */
+    socialUrl: text('social_url'),
+    menuUrl: text('menu_url'),
+    bookingUrl: text('booking_url'),
     lat: real('lat'),
     lng: real('lng'),
+    /** Cover image. Also the logo on cards. Basic listings have this one image. */
     logoR2Key: text('logo_r2_key'),
-    tier: text('tier', { enum: TIERS }).notNull().default('free'),
+    /** Up to 3 more photos (Plus and Featured). Hidden on Basic; not deleted on downgrade. */
+    photos: text('photos', { mode: 'json' }).$type<string[]>(),
+    tier: text('tier', { enum: TIERS }).notNull().default('basic'),
     status: text('status', { enum: STATUSES }).notNull().default('pending'),
     ownerUserId: text('owner_user_id'),
     claimedAt: integer('claimed_at', { mode: 'timestamp' }),
@@ -159,7 +171,20 @@ export const claims = sqliteTable(
 export type ListingChanges = Partial<
   Pick<
     typeof listings.$inferInsert,
-    'name' | 'categoryId' | 'townId' | 'address' | 'phone' | 'website' | 'email' | 'description' | 'hours' | 'logoR2Key'
+    | 'name'
+    | 'categoryId'
+    | 'townId'
+    | 'address'
+    | 'phone'
+    | 'website'
+    | 'email'
+    | 'description'
+    | 'hours'
+    | 'socialUrl'
+    | 'menuUrl'
+    | 'bookingUrl'
+    | 'logoR2Key'
+    | 'photos'
   >
 >;
 

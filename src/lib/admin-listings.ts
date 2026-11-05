@@ -4,7 +4,9 @@ import { categories, claims, listingChanges, listings, pendingEdits, slugRedirec
 import { refreshBreakouts } from './categories';
 import { db } from './db';
 import { fieldChanges, type AdminFields, type ListingFormValues } from './listing-form';
-import { deleteMedia, uploadLogo } from './media';
+import { applyPhotoForm, photoFormInput } from './listing-photos';
+import { deleteMedia } from './media';
+import { photoKeySet, unusedPhotoKeys } from './photos';
 import { slugify } from './slug';
 
 export const ADMIN_PAGE_SIZE = 50;
@@ -125,8 +127,7 @@ export async function saveAdminListing(
   id: number | null,
   v: ListingFormValues,
   a: AdminFields & { ownerUserId: string | null },
-  logo: FormDataEntryValue | null,
-  removeLogo: boolean,
+  form: FormData,
   actor: AdminActor,
 ): Promise<SaveResult> {
   const current = id ? (await db().select().from(listings).where(eq(listings.id, id)).limit(1))[0] : undefined;
@@ -152,16 +153,22 @@ export async function saveAdminListing(
     const [row] = await db().insert(listings).values({ ...next, claimedAt: a.ownerUserId ? new Date() : null }).returning({ id: listings.id });
     listingId = row!.id;
   }
-  const up = await uploadLogo(logo, listingId!);
-  const logoR2Key = up.key ?? (removeLogo ? null : (current?.logoR2Key ?? null));
+  // Admin can store hours, links, and extra photos on any plan. Basic hides the paid-only parts.
+  const applied = await applyPhotoForm(
+    listingId!,
+    { cover: current?.logoR2Key ?? null, extras: current?.photos ?? [] },
+    photoFormInput(form, true),
+  );
+  const logoR2Key = applied.error ? (current?.logoR2Key ?? null) : applied.photos.cover;
+  const photos = applied.error ? (current?.photos ?? null) : applied.photos.extras.length ? applied.photos.extras : null;
 
   const { claimedAt: _ca, ...logged } = next;
-  const changes = fieldChanges(current ?? {}, { ...logged, logoR2Key });
-  if (current && !Object.keys(changes).length) return { id: listingId!, changed: 0, logoError: up.error };
+  const changes = fieldChanges(current ?? {}, { ...logged, logoR2Key, photos });
+  if (current && !Object.keys(changes).length) return { id: listingId!, changed: 0, logoError: applied.error };
 
   const now = new Date();
   await db().batch([
-    db().update(listings).set({ ...next, logoR2Key, updatedAt: now }).where(eq(listings.id, listingId!)),
+    db().update(listings).set({ ...next, logoR2Key, photos, updatedAt: now }).where(eq(listings.id, listingId!)),
     db().insert(listingChanges).values({ listingId: listingId!, userId: actor.id, userEmail: actor.email, action: current ? 'admin edit' : 'created by admin', changes }),
     ...(current && slug !== current.slug
       ? [
@@ -171,9 +178,11 @@ export async function saveAdminListing(
         ]
       : []),
   ]);
-  if (current?.logoR2Key && current.logoR2Key !== logoR2Key) await deleteMedia(current.logoR2Key);
+  if (!applied.error && current) {
+    for (const key of unusedPhotoKeys(photoKeySet(current.logoR2Key, current.photos), photoKeySet(logoR2Key, photos))) await deleteMedia(key);
+  }
   await refreshBreakouts();
-  return { id: listingId!, changed: Object.keys(changes).length, logoError: up.error };
+  return { id: listingId!, changed: Object.keys(changes).length, logoError: applied.error };
 }
 
 /** Permanently delete a listing with its claims, open edits, redirects, and logo. The change log keeps a record. */
@@ -182,9 +191,10 @@ export async function deleteAdminListing(id: number, actor: AdminActor): Promise
   if (!listing) return { error: 'That listing no longer exists.' };
   if (listing.stripeSubscriptionId && (listing.subscriptionStatus === 'active' || listing.subscriptionStatus === 'trialing' || listing.subscriptionStatus === 'past_due'))
     return { error: 'This listing has a live Stripe subscription. Cancel it in Stripe first, or hide the listing instead.' };
-  const editLogos = (await db().select({ changes: pendingEdits.changes }).from(pendingEdits).where(eq(pendingEdits.listingId, id)))
-    .map((e) => e.changes.logoR2Key)
-    .filter((k): k is string => !!k && k !== listing.logoR2Key);
+  const liveKeys = photoKeySet(listing.logoR2Key, listing.photos);
+  const editKeys = (await db().select({ changes: pendingEdits.changes }).from(pendingEdits).where(eq(pendingEdits.listingId, id)))
+    .flatMap((e) => [e.changes.logoR2Key, ...(e.changes.photos ?? [])])
+    .filter((k): k is string => !!k && !liveKeys.has(k));
   await db().batch([
     db().insert(listingChanges).values({
       listingId: id, userId: actor.id, userEmail: actor.email, action: 'deleted',
@@ -194,7 +204,7 @@ export async function deleteAdminListing(id: number, actor: AdminActor): Promise
     db().delete(pendingEdits).where(eq(pendingEdits.listingId, id)),
     db().delete(listings).where(eq(listings.id, id)),
   ]);
-  for (const key of [listing.logoR2Key, ...editLogos]) await deleteMedia(key);
+  for (const key of [...liveKeys, ...editKeys]) await deleteMedia(key);
   await refreshBreakouts();
   return { ok: `Deleted “${listing.name}”.` };
 }

@@ -3,6 +3,7 @@ import Base from '../../../layouts/Base.astro';
 import { getPublishedListing } from '../../../lib/queries';
 import { categoryLink } from '../../../lib/category-rules';
 import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
+import { TIER_LABELS, publicDescription, showsExtraPhotos, showsHours, showsLinks } from '../../../lib/plans';
 import { redirectedSlug } from '../../../lib/admin-listings';
 import { isAdmin } from '../../../lib/auth';
 import { recordListingEvent } from '../../../lib/traffic';
@@ -19,6 +20,11 @@ const catPage = categoryLink({ ...category, parentSlug: parent?.slug ?? null, pa
 
 const url = new URL(`/listing/${l.slug}`, Astro.site).href;
 const logo = l.logoR2Key ? new URL(`/media/${l.logoR2Key}`, Astro.site).href : undefined;
+const description = publicDescription(l.description, l.tier);
+const showHours = showsHours(l.tier);
+const showLinks = showsLinks(l.tier);
+const extras = showsExtraPhotos(l.tier) ? (l.photos ?? []) : [];
+const images = [logo, ...extras.map((key) => new URL(`/media/${key}`, Astro.site).href)].filter((src): src is string => !!src);
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
@@ -27,9 +33,10 @@ const jsonLd = {
   url: l.website ?? url,
   telephone: l.phone ?? undefined,
   email: l.email ?? undefined,
-  description: l.description ?? undefined,
+  description: description ?? undefined,
+  sameAs: showLinks && l.socialUrl ? [l.socialUrl] : undefined,
   logo,
-  image: logo,
+  image: images.length ? images : undefined,
   address: {
     '@type': 'PostalAddress',
     streetAddress: l.address ?? undefined,
@@ -38,20 +45,20 @@ const jsonLd = {
     addressCountry: 'US',
   },
   geo: l.lat != null && l.lng != null ? { '@type': 'GeoCoordinates', latitude: l.lat, longitude: l.lng } : undefined,
-  openingHoursSpecification: toOpeningHoursSpec(l.hours),
+  openingHoursSpecification: showHours ? toOpeningHoursSpec(l.hours) : undefined,
 };
 // Escape "<" so listing text can never close the script tag.
 const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
-const hours = displayHours(l.hours);
+const hours = showHours ? displayHours(l.hours) : [];
 const mapUrl = l.lat != null && l.lng != null
   ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`
   : l.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.address)}` : undefined;
-const paid = l.tier !== 'free';
+const paid = l.tier !== 'basic';
 // Count the view after the response is sent, so tracking never slows the page.
 Astro.locals.cfContext?.waitUntil(recordListingEvent(l.id, 'view', Astro.request.headers.get('user-agent')).catch((err) => console.error('View count failed', err)));
 const { userId } = Astro.locals.auth();
 ---
-<Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={l.description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`} ogImage={logo}>
+<Base title={`${l.name} – ${category.name} in ${town.name}, ${town.state}`} description={description ?? `${l.name}, ${category.name.toLowerCase()} in ${town.name}, ${town.state}.`} canonicalPath={`/listing/${l.slug}`} ogImage={logo}>
   <script slot="head" type="application/ld+json" set:html={jsonLdText} />
   <nav class="mb-4 text-sm text-slate-500">
     <a href="/" class="hover:underline">Home</a>{' / '}
@@ -60,19 +67,26 @@ const { userId } = Astro.locals.auth();
     <a href={`/${catPage.slug}/${town.slug}/`} class="hover:underline">{town.name}</a>
   </nav>
 
-  <article class={`rounded-xl border p-6 ${l.tier === 'premium' ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300' : l.tier === 'featured' ? 'border-sky-300 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white'}`}>
+  <article class={`rounded-xl border p-6 ${l.tier === 'featured' ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300' : l.tier === 'plus' ? 'border-sky-300 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white'}`}>
     <header class="mb-6 flex items-start gap-4">
       {l.logoR2Key && <img src={`/media/${l.logoR2Key}`} alt={`${l.name} logo`} width="96" height="96" class="h-24 w-24 rounded object-contain" />}
       <div>
-        {paid && <span class={`mb-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase ${l.tier === 'premium' ? 'bg-amber-400 text-amber-950' : 'bg-sky-100 text-sky-800'}`}>{l.tier}</span>}
+        {paid && <span class={`mb-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase ${l.tier === 'featured' ? 'bg-amber-400 text-amber-950' : 'bg-sky-100 text-sky-800'}`}>{TIER_LABELS[l.tier]}</span>}
         <h1 class="text-3xl font-bold">{l.name}</h1>
         <p class="text-slate-600">{category.name} · {town.name}, {town.state}</p>
       </div>
     </header>
+    {extras.length > 0 && (
+      <ul class="mb-6 flex gap-2 overflow-x-auto" aria-label="Photos">
+        {extras.map((key) => (
+          <li class="shrink-0"><img src={`/media/${key}`} alt="" width="96" height="64" loading="lazy" class="h-16 w-24 rounded object-cover" /></li>
+        ))}
+      </ul>
+    )}
 
     <div class="grid gap-8 md:grid-cols-3">
       <div class="md:col-span-2">
-        {l.description && <p class="mb-6 whitespace-pre-line text-slate-700">{l.description}</p>}
+        {description && <p class="mb-6 whitespace-pre-line text-slate-700">{description}{l.tier === 'basic' && l.description && description.length < l.description.length ? '…' : ''}</p>}
         {hours.length > 0 && (
           <section>
             <h2 class="mb-2 font-semibold">Hours</h2>
@@ -91,6 +105,9 @@ const { userId } = Astro.locals.auth();
         {l.phone && <p><span class="block text-slate-500">Phone</span><a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} data-track="phone" class="text-sky-700 hover:underline">{l.phone}</a></p>}
         {l.website && <p><span class="block text-slate-500">Website</span><a href={l.website} data-track="website" rel={paid ? 'noopener' : 'nofollow noopener'} target="_blank" class="break-all text-sky-700 hover:underline">{l.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>}
         {l.email && <p><span class="block text-slate-500">Email</span><a href={`mailto:${l.email}`} data-track="email" class="break-all text-sky-700 hover:underline">{l.email}</a></p>}
+        {showLinks && l.socialUrl && <p><span class="block text-slate-500">Social</span><a href={l.socialUrl} rel="noopener" target="_blank" class="break-all text-sky-700 hover:underline">{l.socialUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>}
+        {showLinks && l.menuUrl && <p><span class="block text-slate-500">Menu</span><a href={l.menuUrl} rel="noopener" target="_blank" class="break-all text-sky-700 hover:underline">View menu</a></p>}
+        {showLinks && l.bookingUrl && <p><span class="block text-slate-500">Booking</span><a href={l.bookingUrl} rel="noopener" target="_blank" class="break-all text-sky-700 hover:underline">Book</a></p>}
       </aside>
     </div>
   </article>

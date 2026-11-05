@@ -2,23 +2,30 @@ import { env } from 'cloudflare:workers';
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { listings, type Listing } from '../db/schema';
-import { PAID_TIERS, tierForSubscription, type PaidTier, type TierConfig } from './billing-tier';
+import { BILLING_INTERVALS, PAID_TIERS, priceConfigured, tierForSubscription, type BillingInterval, type PaidTier, type TierConfig } from './billing-tier';
 import { db } from './db';
 
 type BillingEnv = {
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
-  STRIPE_PRICE_FEATURED?: string;
-  STRIPE_PRICE_PREMIUM?: string;
+  STRIPE_PRICE_PLUS_MONTHLY?: string;
+  STRIPE_PRICE_PLUS_YEARLY?: string;
+  STRIPE_PRICE_FEATURED_MONTHLY?: string;
+  STRIPE_PRICE_FEATURED_YEARLY?: string;
   /** Test only: point the SDK at a local mock API, e.g. http://127.0.0.1:12111. Ignored for live keys. */
   STRIPE_API_BASE?: string;
 };
 const benv = () => env as BillingEnv;
 
-export const tierConfig = (): TierConfig => ({ featured: benv().STRIPE_PRICE_FEATURED, premium: benv().STRIPE_PRICE_PREMIUM });
+/** Four prices: Plus and Featured, each monthly and yearly. A value may be a price id or a product id. */
+export const tierConfig = (): TierConfig => ({
+  plus: { month: benv().STRIPE_PRICE_PLUS_MONTHLY, year: benv().STRIPE_PRICE_PLUS_YEARLY },
+  featured: { month: benv().STRIPE_PRICE_FEATURED_MONTHLY, year: benv().STRIPE_PRICE_FEATURED_YEARLY },
+});
 
-/** Billing works only with a secret key and at least one configured tier. */
-export const billingEnabled = () => !!benv().STRIPE_SECRET_KEY && PAID_TIERS.some((t) => tierConfig()[t]);
+/** Billing works only with a secret key and at least one configured price. */
+export const billingEnabled = () =>
+  !!benv().STRIPE_SECRET_KEY && PAID_TIERS.some((t) => BILLING_INTERVALS.some((i) => priceConfigured(tierConfig(), t, i)));
 
 let client: Stripe | undefined;
 export function stripe(): Stripe {
@@ -34,36 +41,18 @@ export function stripe(): Stripe {
   return client;
 }
 
-/** The checkout price for a tier. A configured product id resolves to that product's default price. */
-async function priceIdFor(tier: PaidTier): Promise<string> {
-  const id = tierConfig()[tier];
-  if (!id) throw new Error(`No Stripe price configured for ${tier}`);
+/**
+ * The checkout price for a plan and interval. A price id is used as-is. A product id resolves to
+ * that product's active price with the same interval (one month or one year).
+ */
+async function priceIdFor(tier: PaidTier, interval: BillingInterval): Promise<string> {
+  const id = tierConfig()[tier]?.[interval];
+  if (!id) throw new Error(`No Stripe price configured for ${tier} (${interval})`);
   if (!id.startsWith('prod_')) return id;
-  const product = await stripe().products.retrieve(id);
-  const price = typeof product.default_price === 'string' ? product.default_price : product.default_price?.id;
-  if (!price) throw new Error(`Stripe product ${id} has no default price`);
-  return price;
-}
-
-/** "$29/month" per tier for the upgrade buttons. Cached per isolate; missing on any Stripe error. */
-let priceLabels: Partial<Record<PaidTier, string>> | undefined;
-export async function tierPriceLabels(): Promise<Partial<Record<PaidTier, string>>> {
-  if (priceLabels) return priceLabels;
-  const out: Partial<Record<PaidTier, string>> = {};
-  for (const tier of PAID_TIERS) {
-    if (!tierConfig()[tier]) continue;
-    try {
-      const p = await stripe().prices.retrieve(await priceIdFor(tier));
-      if (p.unit_amount != null) {
-        const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: p.currency.toUpperCase() }).format(p.unit_amount / 100);
-        out[tier] = p.recurring ? `${amount}/${p.recurring.interval_count > 1 ? `${p.recurring.interval_count} ${p.recurring.interval}s` : p.recurring.interval}` : amount;
-      }
-    } catch (err) {
-      console.error(`Could not load Stripe price for ${tier}`, err);
-      return out; // do not cache a partial result
-    }
-  }
-  return (priceLabels = out);
+  const prices = await stripe().prices.list({ product: id, active: true, limit: 100 });
+  const match = prices.data.find((p) => p.recurring?.interval === interval && (p.recurring.interval_count ?? 1) === 1);
+  if (!match) throw new Error(`Stripe product ${id} has no ${interval} price`);
+  return match.id;
 }
 
 /** True while the listing has a subscription Stripe still bills (change it in the portal, not a new checkout). */
@@ -85,16 +74,22 @@ async function customerFor(ownerUserId: string, email: string): Promise<string> 
 }
 
 /** A Checkout session (subscription mode) for upgrading one listing. Returns the URL to redirect to. */
-export async function createCheckout(listing: Listing, tier: PaidTier, user: { id: string; email: string }, origin: string) {
+export async function createCheckout(
+  listing: Listing,
+  tier: PaidTier,
+  interval: BillingInterval,
+  user: { id: string; email: string },
+  origin: string,
+) {
   const customer = listing.stripeCustomerId ?? (await customerFor(user.id, user.email));
   if (listing.stripeCustomerId !== customer) {
     await db().update(listings).set({ stripeCustomerId: customer }).where(eq(listings.id, listing.id));
   }
-  const metadata = { listing_id: String(listing.id), tier, clerk_user_id: user.id };
+  const metadata = { listing_id: String(listing.id), tier, interval, clerk_user_id: user.id };
   const session = await stripe().checkout.sessions.create({
     mode: 'subscription',
     customer,
-    line_items: [{ price: await priceIdFor(tier), quantity: 1 }],
+    line_items: [{ price: await priceIdFor(tier, interval), quantity: 1 }],
     client_reference_id: String(listing.id),
     metadata,
     // Copied onto the subscription, so every later subscription event names its listing.
@@ -117,7 +112,8 @@ const idOf = (v: string | { id: string } | null | undefined) => (typeof v === 's
 /**
  * Bring a listing in line with a subscription's current state in Stripe. The subscription is
  * always re-read from Stripe, so events arriving late, twice, or out of order still end correct.
- * Tier drops to free when Stripe stops billing; the listing itself is never removed or unpublished.
+ * Tier drops to Basic when Stripe stops billing; the listing itself is never removed or unpublished.
+ * Hours, links, and extra photos stay stored and are hidden until the listing is paid again.
  */
 export async function syncSubscription(subscriptionId: string, hint?: { listingId?: number; customerId?: string | null }) {
   const sub = await stripe().subscriptions.retrieve(subscriptionId);
@@ -159,7 +155,7 @@ export async function syncSubscription(subscriptionId: string, hint?: { listingI
 /** Downgrade right away on a failed payment; a later successful retry restores the tier via subscription.updated. */
 async function downgradeForFailedPayment(subscriptionId: string) {
   const listingId = await syncSubscription(subscriptionId);
-  if (listingId) await db().update(listings).set({ tier: 'free', updatedAt: new Date() }).where(eq(listings.id, listingId));
+  if (listingId) await db().update(listings).set({ tier: 'basic', updatedAt: new Date() }).where(eq(listings.id, listingId));
 }
 
 export const HANDLED_EVENTS = [

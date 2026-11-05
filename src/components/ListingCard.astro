@@ -1,37 +1,37 @@
 ---
 import CategoryIcon from './CategoryIcon.astro';
 import { cardCategory, type ListingCard } from '../lib/queries';
+import { publicDescription } from '../lib/plans';
 
 interface Props {
   listing: ListingCard;
 }
 const { listing: l } = Astro.props;
 const cat = cardCategory(l);
-const frame = {
-  premium: 'border-amber-400 bg-amber-50 ring-2 ring-amber-300 shadow-md',
-  featured: 'border-sky-300 bg-white ring-1 ring-sky-200 shadow-sm',
-  free: 'border-slate-200 bg-white',
-}[l.tier];
+const paid = l.tier !== 'basic';
+const description = publicDescription(l.description, l.tier);
+const frame = l.tier === 'featured'
+  ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300 shadow-md'
+  : l.tier === 'plus'
+    ? 'border-sky-300 bg-white ring-1 ring-sky-200 shadow-sm'
+    : 'border-slate-200 bg-white';
 ---
 <article class={`relative flex gap-4 rounded-lg border p-4 ${frame}`}>
   {l.logoR2Key ? (
-    <img src={`/media/${l.logoR2Key}`} alt="" width="64" height="64" loading="lazy" class="h-16 w-16 shrink-0 rounded object-contain" />
+    <img src={`/media/${l.logoR2Key}`} alt="" width="64" height="64" loading="lazy" class={`shrink-0 rounded object-contain ${paid ? 'h-16 w-16' : 'h-12 w-12'}`} />
   ) : (
-    <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-sky-50 text-sky-700/70">
-      <CategoryIcon icon={l.categoryIcon} parentIcon={l.parentIcon} class="h-8 w-8" />
+    <span class={`flex shrink-0 items-center justify-center rounded bg-sky-50 text-sky-700/70 ${paid ? 'h-16 w-16' : 'h-12 w-12'}`}>
+      <CategoryIcon icon={l.categoryIcon} parentIcon={l.parentIcon} class={paid ? 'h-8 w-8' : 'h-6 w-6'} />
     </span>
   )}
   <div class="min-w-0">
-    {l.tier !== 'free' && (
-      <span
-        class={`mb-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${
-          l.tier === 'premium' ? 'bg-amber-400 text-amber-950' : 'bg-sky-100 text-sky-800'
-        }`}
-      >
-        {l.tier}
-      </span>
+    {l.tier === 'featured' && (
+      <span class="mb-1 inline-block rounded bg-amber-400 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-950">Featured</span>
     )}
-    <h3 class="font-semibold">
+    {l.tier === 'plus' && (
+      <span class="mb-1 inline-block rounded bg-sky-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-sky-800">Plus</span>
+    )}
+    <h3 class={paid ? 'text-lg font-semibold' : 'font-semibold'}>
       <a href={`/listing/${l.slug}`} class="after:absolute after:inset-0 hover:underline">{l.name}</a>
     </h3>
     <p class="text-sm text-slate-600">
@@ -40,6 +40,12 @@ const frame = {
       <a href={`/${l.townSlug}/`} class="relative z-10 hover:underline">{l.townName}</a>
     </p>
     {l.address && <p class="mt-1 truncate text-sm text-slate-500">{l.address}</p>}
-    {l.tier !== 'free' && l.description && <p class="mt-2 line-clamp-2 text-sm text-slate-700">{l.description}</p>}
+    {paid && description && <p class="mt-2 line-clamp-3 text-sm text-slate-700">{description}</p>}
+    {paid && (l.phone || l.website) && (
+      <p class="relative z-10 mt-2 flex flex-wrap gap-3 text-sm">
+        {l.phone && <a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} class="text-sky-700 hover:underline">{l.phone}</a>}
+        {l.website && <a href={l.website} rel="noopener" target="_blank" class="text-sky-700 hover:underline">Website</a>}
+      </p>
+    )}
   </div>
 </article>
