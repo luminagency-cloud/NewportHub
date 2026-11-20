@@ -1,8 +1,8 @@
 import { env } from 'cloudflare:workers';
-import { and, eq, isNotNull, or } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { listings, type Listing } from '../db/schema';
-import { PAID_TIERS, tierForSubscription, type PaidTier, type TierConfig } from './billing-tier';
+import { checkoutAction, PAID_TIERS, tierForSubscription, type PaidTier, type TierConfig } from './billing-tier';
 import { db } from './db';
 
 type BillingEnv = {
@@ -90,6 +90,14 @@ export async function createCheckout(listing: Listing, tier: PaidTier, user: { i
   if (listing.stripeCustomerId !== customer) {
     await db().update(listings).set({ stripeCustomerId: customer }).where(eq(listings.id, listing.id));
   }
+  // One open checkout per listing: a second tab or a double click gets the same session, and a
+  // session completes only once, so the owner can't end up with two subscriptions (LA-187).
+  if (listing.checkoutSessionId) {
+    const last = await stripe().checkout.sessions.retrieve(listing.checkoutSessionId).catch(() => null);
+    const action = checkoutAction(last ? { status: last.status, url: last.url, tier: last.metadata?.tier } : null, tier);
+    if (action === 'reuse') return last!.url!;
+    if (action === 'expire-then-new') await stripe().checkout.sessions.expire(last!.id).catch((err) => console.warn('Could not expire checkout session', err));
+  }
   const metadata = { listing_id: String(listing.id), tier, clerk_user_id: user.id };
   const session = await stripe().checkout.sessions.create({
     mode: 'subscription',
@@ -103,6 +111,20 @@ export async function createCheckout(listing: Listing, tier: PaidTier, user: { i
     cancel_url: `${origin}/account?done=upgrade-cancelled`,
   });
   if (!session.url) throw new Error('Stripe returned no checkout URL');
+  // Claim the slot only if no other request took it since we read the listing. If one did, expire
+  // ours and send this tab to theirs.
+  const claimed = await db()
+    .update(listings)
+    .set({ checkoutSessionId: session.id })
+    .where(and(eq(listings.id, listing.id), listing.checkoutSessionId ? eq(listings.checkoutSessionId, listing.checkoutSessionId) : isNull(listings.checkoutSessionId)))
+    .returning({ id: listings.id });
+  if (!claimed.length) {
+    await stripe().checkout.sessions.expire(session.id).catch(() => {});
+    const winner = (await db().select({ id: listings.checkoutSessionId }).from(listings).where(eq(listings.id, listing.id)))[0]?.id;
+    const other = winner ? await stripe().checkout.sessions.retrieve(winner).catch(() => null) : null;
+    if (other?.status === 'open' && other.url) return other.url;
+    throw new Error('Another checkout for this listing started at the same time; try again');
+  }
   return session.url;
 }
 
@@ -136,7 +158,7 @@ export async function syncSubscription(subscriptionId: string, hint?: { listingI
     return listing.id;
   }
   if (listing.stripeSubscriptionId && listing.stripeSubscriptionId !== sub.id && hasLiveSubscription(listing)) {
-    // e.g. two checkout tabs both paid. Not cancelled automatically: refund/cancel the old one in Stripe.
+    // Should not happen since checkouts are reused per listing (LA-187); if it does, refund/cancel the old one in Stripe.
     console.warn(`Listing ${listing.id}: subscription ${sub.id} replaces still-live ${listing.stripeSubscriptionId}; cancel the old one in Stripe`);
   }
   const tier = tierForSubscription(sub, tierConfig());

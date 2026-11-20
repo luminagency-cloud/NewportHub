@@ -35,3 +35,12 @@ export function tierForSubscription(sub: SubscriptionLike, config: TierConfig): 
   if (tiers.includes('featured')) return 'featured';
   return 'free';
 }
+
+/**
+ * What to do with the listing's last Checkout session when the owner starts a checkout:
+ * reuse it while it's open for the same tier, expire it if it's open for another tier, else start fresh.
+ */
+export function checkoutAction(last: { status: string | null; url: string | null; tier: string | undefined } | null, tier: string): 'reuse' | 'expire-then-new' | 'new' {
+  if (!last || last.status !== 'open' || !last.url) return 'new';
+  return last.tier === tier ? 'reuse' : 'expire-then-new';
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `listings` ADD `checkout_session_id` text;

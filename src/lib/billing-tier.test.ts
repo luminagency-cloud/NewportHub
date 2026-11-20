@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tierForSubscription } from './billing-tier.ts';
+import { checkoutAction, tierForSubscription } from './billing-tier.ts';
 
 const config = { featured: 'price_feat', premium: 'prod_prem' };
 const sub = (status: string, ...prices: [string, string][]) => ({
@@ -22,4 +22,12 @@ test('not paying means free; the listing is never removed, only downgraded', () 
 test('unknown prices are free; highest tier wins', () => {
   assert.equal(tierForSubscription(sub('active', ['price_unknown', 'prod_unknown']), config), 'free');
   assert.equal(tierForSubscription(sub('active', ['price_feat', 'prod_x'], ['price_y', 'prod_prem']), config), 'premium');
+});
+
+test('checkoutAction reuses an open session for the same tier only', () => {
+  assert.equal(checkoutAction(null, 'featured'), 'new');
+  assert.equal(checkoutAction({ status: 'open', url: 'https://checkout.stripe.test/a', tier: 'featured' }, 'featured'), 'reuse');
+  assert.equal(checkoutAction({ status: 'open', url: 'https://checkout.stripe.test/a', tier: 'featured' }, 'premium'), 'expire-then-new');
+  assert.equal(checkoutAction({ status: 'complete', url: null, tier: 'featured' }, 'featured'), 'new');
+  assert.equal(checkoutAction({ status: 'expired', url: null, tier: 'featured' }, 'featured'), 'new');
 });

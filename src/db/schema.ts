@@ -94,6 +94,8 @@ export const listings = sqliteTable(
     subscriptionStatus: text('subscription_status'),
     currentPeriodEnd: integer('current_period_end', { mode: 'timestamp' }),
     cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull().default(false),
+    /** The last Checkout session started for this listing. Reused while open, so two tabs can't pay twice. */
+    checkoutSessionId: text('checkout_session_id'),
     /** Google place id from the import source. Lets the seed script re-run without duplicates. */
     sourcePlaceId: text('source_place_id').unique(),
     /** Social profile links (admin-set; see src/lib/social.ts). Null = none. */

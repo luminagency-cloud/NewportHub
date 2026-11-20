@@ -189,6 +189,11 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   `metadata` and `subscription_data.metadata` carry `listing_id`, so every later subscription event
   names its listing. A listing that already has a live subscription goes to the portal instead.
   One Stripe customer per owner (reused across their listings), so one portal shows all plans.
+- **One open checkout per listing.** `listings.checkout_session_id` holds the last Checkout session.
+  Starting a checkout reuses it while it is open for the same tier (two tabs or a double click land
+  on the same session, which completes once), expires it if it is open for another tier, and claims
+  the column with a conditional update so two simultaneous requests can't both start one
+  (`checkoutAction` in `billing-tier.ts`).
 - **Webhook** `/api/stripe/webhook` verifies the signature on the raw body. Handled:
   `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`,
   `invoice.payment_failed`. Every handler re-reads the subscription from Stripe and derives the tier
