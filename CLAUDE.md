@@ -171,6 +171,9 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   Slug, tier, status, and ownership are never owner-editable.
 - **Logos:** a new R2 key per upload (`logos/<listingId>/<uuid>.<ext>`), so a pending logo never
   replaces the live one. Replaced or rejected logo objects are deleted from R2.
+- **Daily limits** (spam protection): an account can make 5 claims and submit 3 new businesses per
+  24 hours (`DAILY_LIMITS` in `src/lib/owner.ts`), counted from its own rows. Sign-up already has
+  Clerk's bot check.
 - **Admin:** `ADMIN_USER_IDS` (comma-separated Clerk user ids). Non-admins get 404 on `/admin`.
 - **Admin edits** (`/admin/listings/<id>`) change every field at once, no review: status, plan, slug,
   owner (email or Clerk user id; the person must have an account), logo. Status `hidden` takes a

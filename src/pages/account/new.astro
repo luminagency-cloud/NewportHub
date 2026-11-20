@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import ListingForm from '../../components/ListingForm.astro';
 import { sessionUser } from '../../lib/auth';
 import { parseListingForm, type ListingFormValues } from '../../lib/listing-form';
-import { formOptions, submitListing } from '../../lib/owner';
+import { DAILY_LIMITS, formOptions, overDailyLimit, submitListing } from '../../lib/owner';
 
 const opts = await formOptions();
 let values: Partial<ListingFormValues> = {};
@@ -15,6 +15,9 @@ if (Astro.request.method === 'POST') {
   const parsed = parseListingForm(form, { ...opts, allowSuggestions: true });
   values = parsed.values;
   errors = parsed.errors;
+  if (!errors.length && (await overDailyLimit(user.id, 'submissions'))) {
+    errors = [`You've submitted ${DAILY_LIMITS.submissions} new businesses in the last 24 hours. Please try again tomorrow, or contact us if you need to add more.`];
+  }
   if (!errors.length) {
     const { logoError } = await submitListing(user, parsed.values, form.get('logo'));
     // The listing is saved even if the logo was refused; send them to edit it to retry the logo.

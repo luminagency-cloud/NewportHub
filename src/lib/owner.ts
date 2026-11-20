@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { claims, listings, pendingEdits, towns, type Listing, type ListingChanges } from '../db/schema';
 import type { SessionUser } from './auth';
 import { db } from './db';
@@ -58,6 +58,23 @@ export async function hasPendingClaim(listingId: number, userId: string) {
   return row.length > 0;
 }
 
+/** Per-account limits on what reaches the moderation queue in 24 hours (spam protection, LA-187). */
+export const DAILY_LIMITS = { claims: 5, submissions: 3 } as const;
+
+/** True when the account already made `DAILY_LIMITS[kind]` claims or new-listing submissions in the last 24 hours. */
+export async function overDailyLimit(userId: string, kind: keyof typeof DAILY_LIMITS): Promise<boolean> {
+  const since = new Date(Date.now() - 86_400_000);
+  const [row] =
+    kind === 'claims'
+      ? await db().select({ n: count() }).from(claims).where(and(eq(claims.userId, userId), gt(claims.createdAt, since)))
+      : await db()
+          .select({ n: count() })
+          .from(listings)
+          // Owner submissions: created by this account, not imported (imports carry a place id).
+          .where(and(eq(listings.ownerUserId, userId), isNull(listings.sourcePlaceId), gt(listings.createdAt, since)));
+  return (row?.n ?? 0) >= DAILY_LIMITS[kind];
+}
+
 /**
  * Claim an unclaimed published listing. A verified email at the listing's website domain makes the
  * user the owner at once; otherwise the claim waits for an admin.
@@ -70,6 +87,7 @@ export async function createClaim(
   if (listing.status !== 'published') return { error: 'This listing cannot be claimed.' };
   if (listing.ownerUserId) return { error: 'This listing already has an owner.' };
   if (await hasPendingClaim(listing.id, user.id)) return { error: 'You already have a pending claim on this listing.' };
+  if (await overDailyLimit(user.id, 'claims')) return { error: `You've made ${DAILY_LIMITS.claims} claims in the last 24 hours. Please try again tomorrow, or contact us if you manage more businesses.` };
 
   const matched = matchingEmail(user.verifiedEmails, listing.website);
   if (matched) {
