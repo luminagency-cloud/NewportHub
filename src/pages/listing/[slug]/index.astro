@@ -1,6 +1,7 @@
 ---
 import Base from '../../../layouts/Base.astro';
-import { getPublishedListing } from '../../../lib/queries';
+import { getPublishedListing, storyForListing } from '../../../lib/queries';
+import { googleProfileUrl, socialEntries } from '../../../lib/social';
 import { categoryLink } from '../../../lib/category-rules';
 import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
 import { redirectedSlug } from '../../../lib/admin-listings';
@@ -39,6 +40,7 @@ const jsonLd = {
   },
   geo: l.lat != null && l.lng != null ? { '@type': 'GeoCoordinates', latitude: l.lat, longitude: l.lng } : undefined,
   openingHoursSpecification: toOpeningHoursSpec(l.hours),
+  sameAs: l.social ? socialEntries(l.social).map((e) => e.url) : undefined,
 };
 // Escape "<" so listing text can never close the script tag.
 const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
@@ -47,6 +49,10 @@ const mapUrl = l.lat != null && l.lng != null
   ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`
   : l.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.address)}` : undefined;
 const paid = l.tier !== 'free';
+const story = await storyForListing(l.id);
+const google = googleProfileUrl(l.sourcePlaceId, l.name, l.address);
+const social = socialEntries(l.social);
+const profiles = [...(google ? [{ label: 'Google', url: google }] : []), ...social];
 // Count the view after the response is sent, so tracking never slows the page.
 Astro.locals.cfContext?.waitUntil(recordListingEvent(l.id, 'view', Astro.request.headers.get('user-agent')).catch((err) => console.error('View count failed', err)));
 const { userId } = Astro.locals.auth();
@@ -73,6 +79,13 @@ const { userId } = Astro.locals.auth();
     <div class="grid gap-8 md:grid-cols-3">
       <div class="md:col-span-2">
         {l.description && <p class="mb-6 whitespace-pre-line text-slate-700">{l.description}</p>}
+        {story && (
+          <a href={`/stories/${story.slug}`} class="mb-6 block rounded-lg border border-sky-200 bg-sky-50 p-4 hover:border-sky-400">
+            <span class="block text-xs font-semibold uppercase tracking-wide text-sky-800">Read their story</span>
+            <span class="mt-1 block font-semibold text-slate-900">{story.title}</span>
+            <span class="mt-1 block text-sm text-slate-600">{story.summary}</span>
+          </a>
+        )}
         {hours.length > 0 && (
           <section>
             <h2 class="mb-2 font-semibold">Hours</h2>
@@ -91,6 +104,11 @@ const { userId } = Astro.locals.auth();
         {l.phone && <p><span class="block text-slate-500">Phone</span><a href={`tel:${l.phone.replace(/[^\d+]/g, '')}`} data-track="phone" class="text-sky-700 hover:underline">{l.phone}</a></p>}
         {l.website && <p><span class="block text-slate-500">Website</span><a href={l.website} data-track="website" rel={paid ? 'noopener' : 'nofollow noopener'} target="_blank" class="break-all text-sky-700 hover:underline">{l.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>}
         {l.email && <p><span class="block text-slate-500">Email</span><a href={`mailto:${l.email}`} data-track="email" class="break-all text-sky-700 hover:underline">{l.email}</a></p>}
+        {profiles.length > 0 && (
+          <p><span class="block text-slate-500">Find them on</span>
+            {profiles.map((p, i) => <>{i > 0 && ' · '}<a href={p.url} data-track="social" rel="nofollow noopener" target="_blank" class="text-sky-700 hover:underline">{p.label}</a></>)}
+          </p>
+        )}
       </aside>
     </div>
   </article>

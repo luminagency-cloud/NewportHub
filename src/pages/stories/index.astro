@@ -1,0 +1,17 @@
+---
+import Base from '../../layouts/Base.astro';
+import StoryCard from '../../components/StoryCard.astro';
+import { publishedStories } from '../../lib/queries';
+
+const rows = await publishedStories();
+---
+<Base title="Stories from local business owners" description="Newport County business owners tell their own stories: how they started, what they do, and what keeps them here." canonicalPath="/stories/">
+  <nav class="mb-4 text-sm text-slate-500"><a href="/" class="hover:underline">Home</a>{' / '}Stories</nav>
+  <h1 class="mb-2 text-3xl font-bold">Stories from local business owners</h1>
+  <p class="mb-8 max-w-2xl text-slate-600">The people behind Newport County businesses, in their own words. Every story is written from a conversation with the owner, who approved it before it was published.</p>
+  {rows.length === 0 ? (
+    <p class="text-slate-600">The first stories are on their way. In the meantime, <a href="/" class="text-sky-700 hover:underline">browse local businesses</a>.</p>
+  ) : (
+    <div class="grid gap-4 md:grid-cols-2">{rows.map((s) => <StoryCard story={s} />)}</div>
+  )}
+</Base>

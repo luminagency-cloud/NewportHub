@@ -1,0 +1,49 @@
+---
+// Owner stories: list, newest change first. Write or edit at /admin/stories/<id|new>.
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import { isAdmin } from '../../../lib/auth';
+import { adminStories } from '../../../lib/stories';
+import { dateToDay } from '../../../lib/story-form';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const rows = await adminStories();
+const msg = Astro.url.searchParams.get('msg');
+---
+<Base title="Stories" noindex>
+  <AdminNav current="stories" />
+  <div class="mb-6 flex items-center justify-between gap-4">
+    <h1 class="text-2xl font-bold">Stories</h1>
+    <a href="/admin/stories/new" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800">New story</a>
+  </div>
+  {msg && <p class="mb-4 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+  <p class="mb-4 text-sm text-slate-600">Paste an approved draft from the AI Interviewer. A story goes live only when its status is <em>published</em>, the owner's approval date is set, and the business itself is published.</p>
+  {rows.length === 0 ? <p class="text-sm text-slate-500">No stories yet.</p> : (
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-50 text-xs text-slate-500">
+          <tr><th class="px-3 py-2">Story</th><th class="px-3 py-2">Business</th><th class="px-3 py-2">Status</th><th class="px-3 py-2">Owner approved</th><th class="px-3 py-2">Published</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const live = r.status === 'published' && r.listingStatus === 'published';
+            return (
+              <tr class="border-t border-slate-100 align-top">
+                <td class="px-3 py-2"><a href={`/admin/stories/${r.id}`} class="font-medium text-sky-700 hover:underline">{r.title}</a>{r.series && <span class="block text-xs text-slate-500">{r.series}</span>}</td>
+                <td class="px-3 py-2"><a href={`/admin/listings/${r.listingId}`} class="hover:underline">{r.listingName}</a>{r.listingStatus !== 'published' && <span class="block text-xs text-amber-800">Business is {r.listingStatus}: story not shown</span>}</td>
+                <td class="px-3 py-2">
+                  <span class={`rounded px-2 py-0.5 text-xs font-medium ${live ? 'bg-green-100 text-green-900' : 'bg-slate-100 text-slate-700'}`}>{live ? 'Live' : r.status}</span>
+                  {live && <a href={`/stories/${r.slug}`} target="_blank" class="ml-2 text-xs text-sky-700 hover:underline">View</a>}
+                </td>
+                <td class="px-3 py-2 text-slate-600">{dateToDay(r.ownerApprovedAt) ?? '—'}</td>
+                <td class="px-3 py-2 text-slate-600">{dateToDay(r.publishedAt) ?? '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+</Base>

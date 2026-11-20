@@ -1,6 +1,6 @@
-import { and, asc, count, eq, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
-import { categories, listings, retiredSlugs, towns, type Category } from '../db/schema';
+import { categories, listings, retiredSlugs, stories, towns, type Category } from '../db/schema';
 import { categoryLink } from './category-rules';
 import { db } from './db';
 
@@ -209,6 +209,57 @@ export async function getPublishedListing(slug: string) {
   )[0];
 }
 
+/** Published story fields shown on cards and the story page. Stories show only while their listing is published. */
+const storyCardFields = {
+  slug: stories.slug,
+  title: stories.title,
+  summary: stories.summary,
+  series: stories.series,
+  publishedAt: stories.publishedAt,
+  listingName: listings.name,
+  listingSlug: listings.slug,
+  logoR2Key: listings.logoR2Key,
+  townName: towns.name,
+};
+const storyLive = and(eq(stories.status, 'published'), eq(listings.status, 'published'));
+
+/** Published stories, newest first. */
+export async function publishedStories(limit = 100) {
+  return db()
+    .select(storyCardFields)
+    .from(stories)
+    .innerJoin(listings, eq(stories.listingId, listings.id))
+    .innerJoin(towns, eq(listings.townId, towns.id))
+    .where(storyLive)
+    .orderBy(desc(stories.publishedAt), desc(stories.id))
+    .limit(limit);
+}
+
+export async function getPublishedStory(slug: string) {
+  return (
+    await db()
+      .select({ story: stories, listing: listings, town: towns, category: categories })
+      .from(stories)
+      .innerJoin(listings, eq(stories.listingId, listings.id))
+      .innerJoin(towns, eq(listings.townId, towns.id))
+      .innerJoin(categories, eq(listings.categoryId, categories.id))
+      .where(and(eq(stories.slug, slug), storyLive))
+      .limit(1)
+  )[0];
+}
+
+/** The newest published story about a listing, for the "Read their story" card. */
+export async function storyForListing(listingId: number) {
+  return (
+    await db()
+      .select({ slug: stories.slug, title: stories.title, summary: stories.summary })
+      .from(stories)
+      .where(and(eq(stories.listingId, listingId), eq(stories.status, 'published')))
+      .orderBy(desc(stories.publishedAt))
+      .limit(1)
+  )[0];
+}
+
 /**
  * Every indexable URL path with its last-modified time: home, parents, broken-out subcategories,
  * towns, those category × town pairs, and listings. Only pages that have published listings.
@@ -245,6 +296,15 @@ export async function sitemapEntries(): Promise<{ path: string; lastmod: Date | 
       touch(`/${r.catSlug}/${r.townSlug}/`, r.lastmod);
     }
     touch(`/listing/${r.slug}`, r.lastmod);
+  }
+  const storyRows = await db()
+    .select({ slug: stories.slug, lastmod: stories.updatedAt })
+    .from(stories)
+    .innerJoin(listings, eq(stories.listingId, listings.id))
+    .where(storyLive);
+  for (const s of storyRows) {
+    touch('/stories/', s.lastmod);
+    touch(`/stories/${s.slug}`, s.lastmod);
   }
   if (!pages.size) return [{ path: '/', lastmod: null }];
   // Home first, then category/town pages, then listings: sitemap order does not matter to crawlers,

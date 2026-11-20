@@ -20,4 +20,5 @@ test('placeSlugProblem rejects empty, malformed, long, and reserved slugs', () =
   assert.match(placeSlugProblem('a'.repeat(81))!, /80/);
   assert.match(placeSlugProblem('admin')!, /reserved/);
   assert.match(placeSlugProblem('go')!, /reserved/);
+  assert.match(placeSlugProblem('stories')!, /reserved/);
 });

@@ -74,7 +74,13 @@ src/lib/ad-form.ts             pure ad helpers: form validation, adDay (NY time)
 src/components/BannerAd.astro  renders one ad for a placement; counts the impression via waitUntil
 src/pages/go/[id].ts           ad click: count, then 302 to the stored link
 src/pages/admin/ads/           banner ad CRUD + stats
-src/pages/sitemap.xml.ts       sitemap (only pages with published listings)
+src/lib/social.ts              pure: social profile links (allowed hosts per network) + Google profile link from the place id (unit-tested)
+src/lib/story-form.ts          pure: story form validation, listing reference parsing, paragraphs (unit-tested)
+src/lib/stories.ts             owner stories: admin reads and writes (public reads are in queries.ts)
+src/pages/stories/             /stories/ (index) and /stories/<slug> (story page + Article JSON-LD)
+src/pages/admin/stories/       owner story list and write/edit form (paste an approved interview draft)
+src/components/StoryCard.astro story card (stories index, home page)
+src/pages/sitemap.xml.ts       sitemap (only pages with published listings, plus live stories)
 src/pages/robots.txt.ts        robots.txt
 public/og-default.png          1200×630 default social card (regenerate with PIL if the brand changes)
 scripts/seed-outscraper.ts     Outscraper import (.xlsx or .csv)
@@ -218,7 +224,7 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
 ## Traffic (views and clicks out)
 
 - `listing_stats`: one row per listing per day (New York) per kind (`view`, `website`, `phone`,
-  `email`, `directions`), incremented with an upsert, only for published listings.
+  `email`, `directions`, `social`), incremented with an upsert, only for published listings.
 - Views count when the listing page renders (`waitUntil`). Outbound links on the listing page carry
   `data-track="<kind>"` and point straight at the business; a click sends
   `navigator.sendBeacon('/api/track', '{"l":<id>,"k":"<kind>"}')`. The endpoint always answers 204.
@@ -227,6 +233,31 @@ scripts/outscraper-queries.ts  prints Outscraper queries (search terms × servic
   indicative.
 - Admin: per-listing totals for a date range and all time on `/admin/listings/<id>`; site totals
   and top listings on `/admin/traffic`.
+
+## Owner stories
+
+- Editorial pieces about one business each, written from an AI Interviewer conversation with the
+  owner (Linear LA-325). The admin pastes the approved draft at `/admin/stories/new` (or "Write a
+  story about this business" on the admin listing page). No automatic publishing.
+- **A story is live only when** its status is `published`, `owner_approved_at` is set (the form
+  refuses to publish without it: the promise to owners is that nothing goes live until they
+  approve it), and its listing is published. Unpublishing the listing hides the story.
+- Body is plain text; blank lines separate paragraphs. The pull quote shows after the second
+  paragraph. `published_at` is set the first time a story goes live and kept after that.
+- URL `/stories/<slug>`, slug from the business name by default. A story slug change has no
+  redirect (unlike listings): the admin form warns. `stories` is a reserved top-level slug
+  (migration 0012).
+- Deleting a listing deletes its stories (FK cascade). `series` is free text until the series is named.
+
+## Social and Google links
+
+- `listings.social` (JSON) holds Facebook, Instagram, TikTok, YouTube, LinkedIn, and X links, set by
+  the admin on `/admin/listings/<id>`. Each link must be on that network's hosts (`src/lib/social.ts`).
+  Owners cannot edit them yet. Like any admin edit, saving them writes `listing_changes`, so later
+  imports stop refreshing that listing's source fields.
+- The Google link is built from `source_place_id` (Google Maps URLs, `query_place_id`). Rows whose
+  id is Outscraper's `google_id` (`0x…:0x…`) get no Google link.
+- Clicks on these links count as traffic kind `social`.
 
 ## SEO
 

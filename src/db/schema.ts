@@ -12,6 +12,9 @@ export const STATUSES = ['pending', 'published', 'rejected', 'hidden'] as const;
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export const CLAIM_METHODS = ['email_domain', 'manual'] as const;
 
+/** Social profiles a listing can link to. Keys and allowed hosts live in src/lib/social.ts. */
+export type SocialLinks = Partial<Record<'facebook' | 'instagram' | 'tiktok' | 'youtube' | 'linkedin' | 'x', string>>;
+
 const timestamps = {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
@@ -90,6 +93,8 @@ export const listings = sqliteTable(
     cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull().default(false),
     /** Google place id from the import source. Lets the seed script re-run without duplicates. */
     sourcePlaceId: text('source_place_id').unique(),
+    /** Social profile links (admin-set; see src/lib/social.ts). Null = none. */
+    social: text('social', { mode: 'json' }).$type<SocialLinks>(),
     ...timestamps,
   },
   (t) => [
@@ -224,7 +229,7 @@ export const listingChanges = sqliteTable(
 );
 
 /** What a listing's traffic counts: page views and clicks out to the business. */
-export const TRAFFIC_KINDS = ['view', 'website', 'phone', 'email', 'directions'] as const;
+export const TRAFFIC_KINDS = ['view', 'website', 'phone', 'email', 'directions', 'social'] as const;
 export type TrafficKind = (typeof TRAFFIC_KINDS)[number];
 
 /** Daily traffic per listing: one row per listing, day, and kind, incremented in place. */
@@ -239,9 +244,45 @@ export const listingStats = sqliteTable(
   (t) => [primaryKey({ columns: [t.listingId, t.day, t.kind] }), index('listing_stats_day_idx').on(t.day)],
 );
 
+export const STORY_STATUSES = ['draft', 'published'] as const;
+
+/**
+ * An owner story: an editorial piece about one business, written from an interview with the owner
+ * (the AI Interviewer's approved draft, pasted in by the admin). Shown at /stories/<slug> and linked
+ * from the listing. Published only with the owner's approval date set (src/lib/story-form.ts).
+ */
+export const stories = sqliteTable(
+  'stories',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull().unique(),
+    title: text('title').notNull(),
+    /** One or two sentences under the title; also the meta description. */
+    summary: text('summary').notNull(),
+    /** Plain text. Blank lines separate paragraphs. */
+    body: text('body').notNull(),
+    pullQuote: text('pull_quote'),
+    /** Who was interviewed, as shown on the page, e.g. "Jane Smith, owner". */
+    interviewee: text('interviewee'),
+    /** Editorial series name (free text until the series is named). */
+    series: text('series'),
+    status: text('status', { enum: STORY_STATUSES }).notNull().default('draft'),
+    /** Day the owner approved this text. Required to publish. */
+    ownerApprovedAt: integer('owner_approved_at', { mode: 'timestamp' }),
+    /** Set the first time the story is published; kept when it is unpublished and published again. */
+    publishedAt: integer('published_at', { mode: 'timestamp' }),
+    /** Interview id in the AI Interviewer, for tracing a story back to its transcript. */
+    sourceInterviewId: text('source_interview_id'),
+    ...timestamps,
+  },
+  (t) => [index('stories_listing_idx').on(t.listingId), index('stories_status_published_idx').on(t.status, t.publishedAt)],
+);
+
 export type Category = typeof categories.$inferSelect;
 export type Town = typeof towns.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
 export type Claim = typeof claims.$inferSelect;
 export type PendingEdit = typeof pendingEdits.$inferSelect;
 export type BannerAd = typeof bannerAds.$inferSelect;
+export type Story = typeof stories.$inferSelect;

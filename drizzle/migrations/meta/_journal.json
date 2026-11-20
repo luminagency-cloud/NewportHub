@@ -78,6 +78,20 @@
       "when": 1792614323338,
       "tag": "0010_category_icons",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1795181885398,
+      "tag": "0011_stories",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795181896053,
+      "tag": "0012_reserve_stories_slug",
+      "breakpoints": true
     }
   ]
 }

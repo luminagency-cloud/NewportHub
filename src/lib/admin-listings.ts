@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
-import { categories, claims, listingChanges, listings, pendingEdits, slugRedirects, towns, type Listing } from '../db/schema';
+import { categories, claims, listingChanges, listings, pendingEdits, slugRedirects, towns, type Listing, type SocialLinks } from '../db/schema';
 import { refreshBreakouts } from './categories';
 import { db } from './db';
 import { fieldChanges, type AdminFields, type ListingFormValues } from './listing-form';
@@ -124,7 +124,7 @@ type SaveResult = { id: number; changed: number; logoError?: string } | { error:
 export async function saveAdminListing(
   id: number | null,
   v: ListingFormValues,
-  a: AdminFields & { ownerUserId: string | null },
+  a: AdminFields & { ownerUserId: string | null; social: SocialLinks | null },
   logo: FormDataEntryValue | null,
   removeLogo: boolean,
   actor: AdminActor,
@@ -144,6 +144,7 @@ export async function saveAdminListing(
     status: a.status,
     tier: a.tier,
     ownerUserId: a.ownerUserId,
+    social: a.social,
     ...(current && a.ownerUserId !== current.ownerUserId ? { claimedAt: a.ownerUserId ? new Date() : null } : {}),
   };
 
@@ -176,7 +177,7 @@ export async function saveAdminListing(
   return { id: listingId!, changed: Object.keys(changes).length, logoError: up.error };
 }
 
-/** Permanently delete a listing with its claims, open edits, redirects, and logo. The change log keeps a record. */
+/** Permanently delete a listing with its claims, open edits, redirects, stories (FK cascade), and logo. The change log keeps a record. */
 export async function deleteAdminListing(id: number, actor: AdminActor): Promise<{ ok: string } | { error: string }> {
   const listing = (await db().select().from(listings).where(eq(listings.id, id)).limit(1))[0];
   if (!listing) return { error: 'That listing no longer exists.' };

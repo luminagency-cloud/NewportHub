@@ -11,6 +11,9 @@ import { STATUSES, TIERS } from '../../../db/schema';
 import { listingTraffic } from '../../../lib/traffic';
 import { dayRange } from '../../../lib/traffic-rules';
 import { adDay } from '../../../lib/ad-form';
+import { parseSocialForm, SOCIAL_NETWORKS } from '../../../lib/social';
+import { storiesForListing } from '../../../lib/stories';
+import type { SocialLinks } from '../../../db/schema';
 
 const { userId } = Astro.locals.auth();
 if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
@@ -31,6 +34,7 @@ let admin: AdminFields = {
   slug: listing?.slug ?? '',
   owner: (await userEmail(Astro, listing?.ownerUserId ?? null)) ?? listing?.ownerUserId ?? '',
 };
+let social: SocialLinks | null = listing?.social ?? null;
 let errors: string[] = [];
 
 if (Astro.request.method === 'POST') {
@@ -47,14 +51,16 @@ if (Astro.request.method === 'POST') {
   } else {
     const parsed = parseListingForm(form, { categoryIds, townIds, allowSuggestions: false });
     const extra = parseAdminFields(form);
+    const links = parseSocialForm(form);
     values = parsed.values;
     admin = extra.values;
-    errors = [...parsed.errors, ...extra.errors];
+    social = links.social;
+    errors = [...parsed.errors, ...extra.errors, ...links.errors];
     if (!errors.length) {
       const owner = await resolveOwner(Astro, extra.values.owner);
       if ('error' in owner) errors = [owner.error];
       else {
-        const r = await saveAdminListing(listing?.id ?? null, parsed.values, { ...extra.values, ownerUserId: owner.id }, form.get('logo'), form.get('removeLogo') === 'yes', actor);
+        const r = await saveAdminListing(listing?.id ?? null, parsed.values, { ...extra.values, ownerUserId: owner.id, social: links.social }, form.get('logo'), form.get('removeLogo') === 'yes', actor);
         if ('error' in r) errors = [r.error];
         else {
           const msg = r.logoError ? `Saved, but the logo was not: ${r.logoError}` : isNew ? 'Business added.' : r.changed ? 'Saved.' : 'Nothing changed.';
@@ -68,7 +74,8 @@ if (Astro.request.method === 'POST') {
 const msg = Astro.url.searchParams.get('msg');
 const range = dayRange(Astro.url.searchParams.get('from'), Astro.url.searchParams.get('to'), adDay());
 const traffic = listing ? await listingTraffic(listing.id, range.from, range.to) : undefined;
-const TRAFFIC_ROWS = [['view', 'Page views'], ['website', 'Website clicks'], ['phone', 'Phone taps'], ['email', 'Email clicks'], ['directions', 'Directions clicks']] as const;
+const TRAFFIC_ROWS = [['view', 'Page views'], ['website', 'Website clicks'], ['phone', 'Phone taps'], ['email', 'Email clicks'], ['directions', 'Directions clicks'], ['social', 'Google / social clicks']] as const;
+const listingStories = listing ? await storiesForListing(listing.id) : [];
 const field = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
 const label = 'block text-sm font-medium text-slate-700';
 const liveSub = listing?.stripeSubscriptionId && ['active', 'trialing', 'past_due'].includes(listing.subscriptionStatus ?? '');
@@ -111,6 +118,15 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
         <span class="mt-1 block text-xs font-normal text-slate-500">The owner must have a NewportHub account.</span>
       </label>
     </fieldset>
+    <fieldset slot="note" class="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+      <legend class="px-1 text-sm font-semibold text-slate-700">Social profiles <span class="font-normal text-slate-500">(admin only; shown on the listing)</span></legend>
+      {SOCIAL_NETWORKS.map((n) => (
+        <label class={label}>{n.label}
+          <input name={`social_${n.key}`} value={social?.[n.key] ?? ''} maxlength="300" placeholder={`https://${n.hosts[0]}/…`} class={field} />
+        </label>
+      ))}
+      <p class="text-xs text-slate-500 sm:col-span-2">The Google link is added automatically from the imported Google place id.</p>
+    </fieldset>
     {listing?.logoR2Key && (
       <label slot="logo" class="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" name="removeLogo" value="yes" /> Remove logo</label>
     )}
@@ -118,6 +134,16 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
 
   {detail && (
     <>
+      <section class="mt-10">
+        <h2 class="mb-3 text-lg font-semibold">Stories</h2>
+        {listingStories.length > 0 && (
+          <ul class="mb-3 space-y-1 text-sm">
+            {listingStories.map((st) => <li><a href={`/admin/stories/${st.id}`} class="text-sky-700 hover:underline">{st.title}</a> <span class="text-slate-500">({st.status})</span></li>)}
+          </ul>
+        )}
+        <a href={`/admin/stories/new?listing=${encodeURIComponent(listing!.slug)}`} class="inline-block rounded-md border border-sky-700 px-3 py-1.5 text-sm font-medium text-sky-800 hover:bg-sky-50">Write a story about this business</a>
+      </section>
+
       {detail.redirects.length > 0 && <p class="mt-8 text-sm text-slate-600">Old addresses that redirect here: {detail.redirects.map((s) => `/listing/${s}`).join(', ')}</p>}
 
       {traffic && (
@@ -169,7 +195,7 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
 
       <section class="mt-10 rounded-lg border border-red-200 bg-red-50 p-4">
         <h2 class="mb-1 font-semibold text-red-900">Delete this business</h2>
-        <p class="mb-3 text-sm text-red-900">Permanent: removes the listing, its claims and pending edits, and its logo. To take it off the site but keep it, set the status to <em>hidden</em> instead.</p>
+        <p class="mb-3 text-sm text-red-900">Permanent: removes the listing, its claims and pending edits, its stories, and its logo. To take it off the site but keep it, set the status to <em>hidden</em> instead.</p>
         <form method="post" class="flex flex-wrap items-center gap-3">
           <input type="hidden" name="action" value="delete" />
           <label class="flex items-center gap-2 text-sm text-red-900"><input type="checkbox" name="confirm" value="yes" /> Yes, delete permanently</label>

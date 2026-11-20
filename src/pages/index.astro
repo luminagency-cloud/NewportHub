@@ -4,9 +4,10 @@ import SearchForm from '../components/SearchForm.astro';
 import ListingCard from '../components/ListingCard.astro';
 import BannerAd from '../components/BannerAd.astro';
 import CategoryIcon from '../components/CategoryIcon.astro';
-import { allTowns, categoryTree, searchListings } from '../lib/queries';
+import StoryCard from '../components/StoryCard.astro';
+import { allTowns, categoryTree, publishedStories, searchListings } from '../lib/queries';
 
-const [tree, towns, top] = await Promise.all([categoryTree(), allTowns(), searchListings({})]);
+const [tree, towns, top, latestStories] = await Promise.all([categoryTree(), allTowns(), searchListings({}), publishedStories(4)]);
 const grid = tree.filter((p) => p.total > 0);
 // Subcategories that have their own page get a tile too, most listings first.
 const popular = tree
@@ -26,6 +27,16 @@ const spotlight = top.rows.filter((l) => l.tier !== 'free').slice(0, 6);
     <section class="mb-10">
       <h2 class="mb-4 text-xl font-semibold">Featured businesses</h2>
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{spotlight.map((l) => <ListingCard listing={l} />)}</div>
+    </section>
+  )}
+
+  {latestStories.length > 0 && (
+    <section class="mb-10">
+      <div class="mb-4 flex items-baseline justify-between gap-4">
+        <h2 class="text-xl font-semibold">Stories from local owners</h2>
+        <a href="/stories/" class="text-sm font-medium text-sky-700 hover:underline">All stories</a>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">{latestStories.map((s) => <StoryCard story={s} />)}</div>
     </section>
   )}
 

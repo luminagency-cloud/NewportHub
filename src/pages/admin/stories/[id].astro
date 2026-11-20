@@ -1,0 +1,131 @@
+---
+// Write (/admin/stories/new[?listing=<slug>]) or edit (/admin/stories/<id>) an owner story. Changes go live at once.
+import Base from '../../../layouts/Base.astro';
+import AdminNav from '../../../components/AdminNav.astro';
+import { isAdmin } from '../../../lib/auth';
+import { adminStory, deleteStory, findListing, saveStory } from '../../../lib/stories';
+import { dateToDay, parseStoryForm, type StoryFormValues } from '../../../lib/story-form';
+import { STORY_STATUSES } from '../../../db/schema';
+
+const { userId } = Astro.locals.auth();
+if (!userId || !isAdmin(userId)) return new Response(null, { status: 404 });
+
+const isNew = Astro.params.id === 'new';
+const detail = isNew ? undefined : await adminStory(Number(Astro.params.id));
+if (!isNew && !detail) return new Response(null, { status: 404 });
+const story = detail?.story;
+
+let values: Partial<StoryFormValues> = story
+  ? { ...story, listingRef: detail!.listing.slug, ownerApprovedOn: dateToDay(story.ownerApprovedAt) }
+  : { listingRef: Astro.url.searchParams.get('listing') ?? '', status: 'draft' };
+let errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (form.get('action') === 'delete' && story) {
+    if (form.get('confirm') !== 'yes') errors = ['Tick the box to confirm deleting this story.'];
+    else {
+      await deleteStory(story.id);
+      return Astro.redirect(`/admin/stories?msg=${encodeURIComponent(`Deleted “${story.title}”.`)}`, 303);
+    }
+  } else {
+    const parsed = parseStoryForm(form);
+    values = parsed.values;
+    errors = parsed.errors;
+    if (!errors.length) {
+      const r = await saveStory(story?.id ?? null, parsed.values);
+      if ('error' in r) errors = [r.error];
+      else return Astro.redirect(`/admin/stories/${r.id}?msg=${encodeURIComponent(isNew ? 'Story saved.' : 'Saved.')}`, 303);
+    }
+  }
+}
+
+// The business, so the admin can see which one the URL name points at.
+const business = values.listingRef ? await findListing(values.listingRef) : undefined;
+const live = story?.status === 'published' && detail?.listing.status === 'published';
+const msg = Astro.url.searchParams.get('msg');
+const field = 'mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2';
+const label = 'block text-sm font-medium text-slate-700';
+const hint = 'font-normal text-slate-500';
+---
+<Base title={isNew ? 'New story' : `Edit ${story!.title}`} noindex>
+  <AdminNav current="stories" />
+  <p class="mb-2 text-sm"><a href="/admin/stories" class="text-sky-700 hover:underline">← Stories</a></p>
+  <h1 class="mb-2 text-2xl font-bold">{isNew ? 'New story' : story!.title}</h1>
+  {story && (
+    <p class="mb-4 text-sm text-slate-600">
+      {live ? <a href={`/stories/${story.slug}`} class="text-sky-700 hover:underline" target="_blank">View on site</a> : <span>Not on the site ({detail!.listing.status !== 'published' ? `business is ${detail!.listing.status}` : story.status}).</span>}
+      {' '}· Changes here go live immediately.
+    </p>
+  )}
+  {msg && <p class="mb-4 rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-900" role="status">{msg}</p>}
+
+  <form method="post" class="max-w-3xl space-y-5">
+    {errors.length > 0 && (
+      <div class="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">
+        <p class="font-medium">Please fix the following:</p>
+        <ul class="mt-1 list-disc pl-5">{errors.map((e) => <li>{e}</li>)}</ul>
+      </div>
+    )}
+
+    <label class={label}>Business * <span class={hint}>(its URL name, a /listing/… link, or its id)</span>
+      <input name="listing" required value={values.listingRef ?? ''} maxlength="300" class={field} />
+      {business ? <span class="mt-1 block text-xs font-normal text-slate-600">{business.name}{business.townName && `, ${business.townName}`} ({business.status})</span>
+        : values.listingRef && <span class="mt-1 block text-xs font-normal text-amber-800">No business found for that.</span>}
+    </label>
+
+    <label class={label}>Title *
+      <input name="title" required maxlength="160" value={values.title ?? ''} class={field} />
+    </label>
+    <label class={label}>Summary * <span class={hint}>(one or two sentences; also the search snippet)</span>
+      <textarea name="summary" required maxlength="400" rows="2" class={field}>{values.summary ?? ''}</textarea>
+    </label>
+    <label class={label}>Story * <span class={hint}>(plain text; a blank line starts a new paragraph)</span>
+      <textarea name="body" required rows="18" class={`${field} font-serif`}>{values.body ?? ''}</textarea>
+    </label>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <label class={label}>Pull quote <span class={hint}>(the owner's own words)</span>
+        <textarea name="pullQuote" maxlength="500" rows="3" class={field}>{values.pullQuote ?? ''}</textarea>
+      </label>
+      <label class={label}>Interviewee <span class={hint}>(e.g. “Jane Smith, owner”)</span>
+        <input name="interviewee" maxlength="120" value={values.interviewee ?? ''} class={field} />
+      </label>
+    </div>
+
+    <fieldset class="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+      <legend class="px-1 text-sm font-semibold text-slate-700">Publishing</legend>
+      <label class={label}>Status
+        <select name="status" class={field}>
+          {STORY_STATUSES.map((s) => <option value={s} selected={s === (values.status ?? 'draft')}>{s}</option>)}
+        </select>
+      </label>
+      <label class={label}>Owner approved on <span class={hint}>(required to publish)</span>
+        <input type="date" name="ownerApprovedOn" value={values.ownerApprovedOn ?? ''} class={field} />
+      </label>
+      <label class={label}>URL name <span class={hint}>(/stories/…; empty = from the business name)</span>
+        <input name="slug" maxlength="100" value={values.slug ?? ''} class={field} />
+        {story && <span class="mt-1 block text-xs font-normal text-amber-800">Changing it on a published story breaks links to the old address.</span>}
+      </label>
+      <label class={label}>Series <span class={hint}>(optional label shown above the title)</span>
+        <input name="series" maxlength="80" value={values.series ?? ''} class={field} />
+      </label>
+      <label class={`${label} sm:col-span-2`}>AI Interviewer interview id <span class={hint}>(optional; for tracing back to the transcript)</span>
+        <input name="sourceInterviewId" maxlength="100" value={values.sourceInterviewId ?? ''} class={field} />
+      </label>
+    </fieldset>
+
+    <button type="submit" class="rounded-md bg-sky-700 px-5 py-2 font-medium text-white hover:bg-sky-800">{isNew ? 'Save story' : 'Save changes'}</button>
+  </form>
+
+  {story && (
+    <section class="mt-10 max-w-3xl rounded-lg border border-red-200 bg-red-50 p-4">
+      <h2 class="mb-1 font-semibold text-red-900">Delete this story</h2>
+      <p class="mb-3 text-sm text-red-900">Permanent. To take it off the site but keep it, set the status to <em>draft</em> instead.</p>
+      <form method="post" class="flex flex-wrap items-center gap-3">
+        <input type="hidden" name="action" value="delete" />
+        <label class="flex items-center gap-2 text-sm text-red-900"><input type="checkbox" name="confirm" value="yes" /> Yes, delete permanently</label>
+        <button class="rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100">Delete</button>
+      </form>
+    </section>
+  )}
+</Base>

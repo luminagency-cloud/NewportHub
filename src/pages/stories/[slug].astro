@@ -1,0 +1,71 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getPublishedStory } from '../../lib/queries';
+import { paragraphs } from '../../lib/story-form';
+import { isAdmin } from '../../lib/auth';
+
+const row = await getPublishedStory(Astro.params.slug!);
+if (!row) return new Response(null, { status: 404 });
+const { story: s, listing: l, town, category } = row;
+
+const url = new URL(`/stories/${s.slug}`, Astro.site).href;
+const logo = l.logoR2Key ? new URL(`/media/${l.logoR2Key}`, Astro.site).href : undefined;
+const published = s.publishedAt ?? s.createdAt;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  '@id': url,
+  headline: s.title,
+  description: s.summary,
+  datePublished: published.toISOString(),
+  dateModified: s.updatedAt.toISOString(),
+  image: logo,
+  mainEntityOfPage: url,
+  publisher: { '@type': 'Organization', name: 'NewportHub', url: Astro.site?.origin },
+  about: { '@type': 'LocalBusiness', '@id': new URL(`/listing/${l.slug}`, Astro.site).href, name: l.name },
+};
+// Escape "<" so story text can never close the script tag.
+const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+const paras = paragraphs(s.body);
+// The pull quote sits after the second paragraph (or after the only one).
+const quoteAfter = Math.min(1, paras.length - 1);
+const { userId } = Astro.locals.auth();
+---
+<Base title={s.title} description={s.summary} canonicalPath={`/stories/${s.slug}`} ogImage={logo}>
+  <script slot="head" type="application/ld+json" set:html={jsonLdText} />
+  <nav class="mb-4 text-sm text-slate-500">
+    <a href="/" class="hover:underline">Home</a>{' / '}<a href="/stories/" class="hover:underline">Stories</a>
+  </nav>
+
+  <article class="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-6 sm:p-10">
+    <header class="mb-8">
+      {s.series && <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700">{s.series}</p>}
+      <h1 class="text-3xl font-bold leading-tight">{s.title}</h1>
+      <p class="mt-3 text-lg text-slate-600">{s.summary}</p>
+      <p class="mt-4 text-sm text-slate-500">
+        <a href={`/listing/${l.slug}`} class="font-medium text-sky-700 hover:underline">{l.name}</a> · {category.name} · {town.name}, {town.state}
+        {' · '}<time datetime={published.toISOString()}>{published.toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'long' })}</time>
+      </p>
+    </header>
+
+    <div class="space-y-5 text-lg leading-relaxed text-slate-800">
+      {paras.map((p, i) => (
+        <>
+          <p class="whitespace-pre-line">{p}</p>
+          {i === quoteAfter && s.pullQuote && (
+            <blockquote class="border-l-4 border-sky-700 py-1 pl-5 text-xl font-medium italic text-slate-900">
+              “{s.pullQuote.replace(/^[“"]|[”"]$/g, '')}”
+              {s.interviewee && <footer class="mt-2 text-sm font-normal not-italic text-slate-500">— {s.interviewee}</footer>}
+            </blockquote>
+          )}
+        </>
+      ))}
+    </div>
+
+    <footer class="mt-10 border-t border-slate-200 pt-6 text-sm text-slate-600">
+      <p>Based on a conversation with {s.interviewee ?? `the owner of ${l.name}`}. The owner reviewed and approved this story before it was published.</p>
+      <p class="mt-4"><a href={`/listing/${l.slug}`} class="inline-block rounded-md bg-sky-800 px-4 py-2 font-medium text-white hover:bg-sky-900">Visit {l.name} on NewportHub</a></p>
+    </footer>
+  </article>
+  {isAdmin(userId) && <p class="mx-auto mt-4 max-w-2xl text-sm"><a href={`/admin/stories/${s.id}`} class="font-medium text-sky-700 hover:underline">Edit in admin</a></p>}
+</Base>
