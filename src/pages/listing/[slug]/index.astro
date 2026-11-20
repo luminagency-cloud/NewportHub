@@ -2,6 +2,7 @@
 import Base from '../../../layouts/Base.astro';
 import { getPublishedListing, storyForListing } from '../../../lib/queries';
 import { googleProfileUrl, socialEntries } from '../../../lib/social';
+import { attributeBadges } from '../../../lib/attributes';
 import { categoryLink } from '../../../lib/category-rules';
 import { displayHours, toOpeningHoursSpec } from '../../../lib/hours';
 import { redirectedSlug } from '../../../lib/admin-listings';
@@ -20,6 +21,7 @@ const catPage = categoryLink({ ...category, parentSlug: parent?.slug ?? null, pa
 
 const url = new URL(`/listing/${l.slug}`, Astro.site).href;
 const logo = l.logoR2Key ? new URL(`/media/${l.logoR2Key}`, Astro.site).href : undefined;
+const badges = attributeBadges(l.attributes);
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
@@ -40,6 +42,7 @@ const jsonLd = {
   },
   geo: l.lat != null && l.lng != null ? { '@type': 'GeoCoordinates', latitude: l.lat, longitude: l.lng } : undefined,
   openingHoursSpecification: toOpeningHoursSpec(l.hours),
+  amenityFeature: badges.length ? badges.map((name) => ({ '@type': 'LocationFeatureSpecification', name, value: true })) : undefined,
   sameAs: l.social ? socialEntries(l.social).map((e) => e.url) : undefined,
 };
 // Escape "<" so listing text can never close the script tag.
@@ -79,6 +82,14 @@ const { userId } = Astro.locals.auth();
     <div class="grid gap-8 md:grid-cols-3">
       <div class="md:col-span-2">
         {l.description && <p class="mb-6 whitespace-pre-line text-slate-700">{l.description}</p>}
+        {badges.length > 0 && (
+          <section class="mb-6">
+            <h2 class="mb-2 font-semibold">Good to know</h2>
+            <ul class="flex flex-wrap gap-2 text-sm">
+              {badges.map((b) => <li class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">{b}</li>)}
+            </ul>
+          </section>
+        )}
         {story && (
           <a href={`/stories/${story.slug}`} class="mb-6 block rounded-lg border border-sky-200 bg-sky-50 p-4 hover:border-sky-400">
             <span class="block text-xs font-semibold uppercase tracking-wide text-sky-800">Read their story</span>

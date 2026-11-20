@@ -22,6 +22,7 @@ import { readSheet } from 'read-excel-file/node';
 import { SERVICE_STATE, SERVICE_TOWNS } from '../src/data/taxonomy';
 import { mapSourceCategory, REFRESH_BREAKOUTS_SQL } from '../src/lib/category-rules';
 import { slugify } from '../src/lib/slug';
+import { parseAbout } from '../src/lib/attributes';
 import { wrangler } from './wrangler';
 
 const args = process.argv.slice(2);
@@ -103,6 +104,8 @@ async function readRows(path: string): Promise<Row[]> {
 }
 
 const rows = await readRows(inputPath);
+// Attributes come from `about`. A file without that column leaves existing attributes alone.
+const hasAbout = rows.some((r) => 'about' in r);
 console.log(`Read ${rows.length} rows from ${inputPath}`);
 
 const aliasRows = d1Query<{ alias: string; category_id: number }>('SELECT alias, category_id FROM category_aliases');
@@ -180,6 +183,7 @@ for (const [i, row] of rows.entries()) {
     website: q(website(val(row, 'site', 'website'))),
     email: q(val(row, 'email', 'email_1')),
     description: q(description(row)),
+    ...(hasAbout ? { attributes: q(((a) => (a ? JSON.stringify(a) : null))(parseAbout(val(row, 'about')))) } : {}),
     lat: Number.isFinite(lat) && lat !== 0 ? String(lat) : 'NULL',
     lng: Number.isFinite(lng) && lng !== 0 ? String(lng) : 'NULL',
     source_place_id: q(placeId),

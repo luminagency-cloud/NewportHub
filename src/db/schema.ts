@@ -12,6 +12,9 @@ export const STATUSES = ['pending', 'published', 'rejected', 'hidden'] as const;
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export const CLAIM_METHODS = ['email_domain', 'manual'] as const;
 
+/** Google business attributes from the import: group → attribute → yes/no (src/lib/attributes.ts). */
+export type ListingAttributes = Record<string, Record<string, boolean>>;
+
 /** Social profiles a listing can link to. Keys and allowed hosts live in src/lib/social.ts. */
 export type SocialLinks = Partial<Record<'facebook' | 'instagram' | 'tiktok' | 'youtube' | 'linkedin' | 'x', string>>;
 
@@ -95,6 +98,8 @@ export const listings = sqliteTable(
     sourcePlaceId: text('source_place_id').unique(),
     /** Social profile links (admin-set; see src/lib/social.ts). Null = none. */
     social: text('social', { mode: 'json' }).$type<SocialLinks>(),
+    /** Google attributes (accessibility, ownership, …) from Outscraper's `about`. Import-only. */
+    attributes: text('attributes', { mode: 'json' }).$type<ListingAttributes>(),
     ...timestamps,
   },
   (t) => [

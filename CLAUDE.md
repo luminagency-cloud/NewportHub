@@ -74,6 +74,7 @@ src/lib/ad-form.ts             pure ad helpers: form validation, adDay (NY time)
 src/components/BannerAd.astro  renders one ad for a placement; counts the impression via waitUntil
 src/pages/go/[id].ts           ad click: count, then 302 to the stored link
 src/pages/admin/ads/           banner ad CRUD + stats
+src/lib/attributes.ts          pure: Google attributes from Outscraper's `about` JSON → listing badges (unit-tested)
 src/lib/social.ts              pure: social profile links (allowed hosts per network) + Google profile link from the place id (unit-tested)
 src/lib/story-form.ts          pure: story form validation, listing reference parsing, paragraphs (unit-tested)
 src/lib/stories.ts             owner stories: admin reads and writes (public reads are in queries.ts)
@@ -376,9 +377,13 @@ or Stripe fields. Skipped and reported: duplicates in the file, permanently clos
 name/city/state, and anything outside the service towns (`SERVICE_TOWNS`). Category: first alias hit
 on `category`, then each `subtypes` entry, filed on that category's parent; no hit → row not imported, source category saved to
 `import_unmapped`. **Hours are not imported** (Basic has no hours). Website is saved the way the form saves it (no trailing slash on a bare domain); `about` is used as
-the description only when it is prose (Outscraper usually puts JSON there). Columns read: `name,
-place_id|google_id, category|type, subtypes, city, us_state|state, full_address, phone, site,
-email|email_1, description|about, latitude, longitude, business_status`. Logos are not imported.
+the description only when it is prose (Outscraper usually puts JSON there). When `about` is Google's
+attribute JSON (`{"Accessibility": {"Wheelchair accessible entrance": true}, …}`), it goes into
+`listings.attributes` (`src/lib/attributes.ts`) and the listing shows the true ones as "Good to know"
+badges (plus `amenityFeature` in JSON-LD). A file without an `about` column leaves attributes alone.
+Columns read: `name, place_id|google_id, category|type, subtypes, city, us_state|state,
+full_address, phone, site, email|email_1, description|about, about, latitude, longitude,
+business_status`. Logos are not imported.
 
 Outscraper settings: Google Maps data only, no enrichments (emails, contacts, social, phone
 validation, reviews, photos). Queries: `npm run outscraper:queries` (search term × town).
